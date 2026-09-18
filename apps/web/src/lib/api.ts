@@ -1,5 +1,6 @@
 import type {
   AskResponse,
+  AskStreamEvent,
   DocumentDetail,
   DocumentInsightResponse,
   DocumentSummary,
@@ -85,4 +86,48 @@ export async function askDocument(
       body: JSON.stringify({ question })
     })
   );
+}
+
+export async function streamAskDocument(
+  id: string,
+  question: string,
+  onEvent: (event: AskStreamEvent) => void
+): Promise<void> {
+  const response = await fetch(`${API_BASE}/documents/${id}/ask/stream`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ question })
+  });
+
+  if (!response.ok) {
+    await parseResponse(response);
+    return;
+  }
+  if (!response.body) {
+    throw new Error("当前浏览器不支持流式读取");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      onEvent(JSON.parse(trimmed) as AskStreamEvent);
+    }
+  }
+
+  buffer += decoder.decode();
+  if (buffer.trim()) {
+    onEvent(JSON.parse(buffer.trim()) as AskStreamEvent);
+  }
 }

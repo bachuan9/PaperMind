@@ -1,11 +1,15 @@
+import json
 from pathlib import Path
+from time import perf_counter
+from typing import AsyncIterator
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
 from .analyzer import build_document_insights
-from .llm import answer_with_model
+from .llm import ModelStreamError, answer_with_model, elapsed_ms, stream_answer_with_model
 from .models import (
     AskRequest,
     AskResponse,
@@ -221,6 +225,33 @@ async def ask_document(
     )
 
 
+@app.post("/documents/{document_id}/ask/stream")
+async def ask_document_stream(
+    document_id: str,
+    request: AskRequest,
+    settings: Settings = Depends(get_settings),
+    store: JsonStore = Depends(get_store),
+) -> StreamingResponse:
+    document = store.get_document(document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    if document.status != "ready":
+        raise HTTPException(status_code=409, detail="文档尚未解析完成")
+
+    citations = retrieve(request.question, document.chunks)
+
+    return StreamingResponse(
+        stream_answer_events(
+            document_id=document_id,
+            question=request.question,
+            citations=citations,
+            settings=settings,
+            store=store,
+        ),
+        media_type="application/x-ndjson",
+    )
+
+
 def build_llm_log(
     *,
     document_id: str,
@@ -245,3 +276,125 @@ def build_llm_log(
         citation_count=citation_count,
         error=error,
     )
+
+
+async def stream_answer_events(
+    *,
+    document_id: str,
+    question: str,
+    citations: list,
+    settings: Settings,
+    store: JsonStore,
+) -> AsyncIterator[str]:
+    if not settings.deepseek_api_key or not citations:
+        reason = (
+            "\u672a\u914d\u7f6e DEEPSEEK_API_KEY"
+            if not settings.deepseek_api_key
+            else "\u6ca1\u6709\u53ef\u7528\u5f15\u7528\u7247\u6bb5"
+        )
+        fallback_answer = build_extractive_answer(question, citations)
+        store.append_llm_log(
+            build_llm_log(
+                document_id=document_id,
+                question=question,
+                settings=settings,
+                mode="extractive",
+                status="skipped",
+                latency_ms=0,
+                citation_count=len(citations),
+                error=reason,
+            )
+        )
+        async for event in stream_fallback_answer(
+            answer=fallback_answer,
+            citations=citations,
+            reason=reason,
+        ):
+            yield event
+        return
+
+    started = perf_counter()
+    chunks: list[str] = []
+    yield stream_event(
+        "meta",
+        {
+            "mode": "model",
+            "provider": "SiliconFlow",
+            "model": settings.llm_model,
+            "fallback_reason": None,
+            "citations": [citation.model_dump() for citation in citations],
+        },
+    )
+    try:
+        async for token in stream_answer_with_model(
+            settings=settings,
+            question=question,
+            citations=citations,
+        ):
+            chunks.append(token)
+            yield stream_event("token", {"token": token})
+        store.append_llm_log(
+            build_llm_log(
+                document_id=document_id,
+                question=question,
+                settings=settings,
+                mode="model",
+                status="success",
+                latency_ms=elapsed_ms(started),
+                citation_count=len(citations),
+                error=None,
+            )
+        )
+        yield stream_event("done", {"answer": "".join(chunks)})
+    except ModelStreamError as error:
+        fallback_answer = build_extractive_answer(question, citations)
+        store.append_llm_log(
+            build_llm_log(
+                document_id=document_id,
+                question=question,
+                settings=settings,
+                mode="extractive",
+                status="failed",
+                latency_ms=error.latency_ms or elapsed_ms(started),
+                citation_count=len(citations),
+                error=str(error),
+            )
+        )
+        async for event in stream_fallback_answer(
+            answer=fallback_answer,
+            citations=citations,
+            reason=str(error),
+        ):
+            yield event
+
+
+async def stream_fallback_answer(
+    *,
+    answer: str,
+    citations: list,
+    reason: str,
+) -> AsyncIterator[str]:
+    yield stream_event(
+        "meta",
+        {
+            "mode": "extractive",
+            "provider": "local",
+            "model": None,
+            "fallback_reason": reason,
+            "citations": [citation.model_dump() for citation in citations],
+        },
+    )
+    for chunk in chunk_text(answer):
+        yield stream_event("token", {"token": chunk})
+    yield stream_event("done", {"answer": answer})
+
+
+def stream_event(event_type: str, payload: dict) -> str:
+    return json.dumps(
+        {"type": event_type, **payload},
+        ensure_ascii=False,
+    ) + "\n"
+
+
+def chunk_text(text: str, size: int = 18) -> list[str]:
+    return [text[index : index + size] for index in range(0, len(text), size)]

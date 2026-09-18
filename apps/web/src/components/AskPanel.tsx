@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { MessageSquareText, Send } from "lucide-react";
-import { askDocument } from "@/lib/api";
+import { streamAskDocument } from "@/lib/api";
 import type { AskResponse } from "@/types";
 
 export function AskPanel({ documentId }: { documentId: string }) {
@@ -17,8 +17,26 @@ export function AskPanel({ documentId }: { documentId: string }) {
 
     setIsAsking(true);
     setError(null);
+    setAnswer(null);
     try {
-      setAnswer(await askDocument(documentId, question.trim()));
+      await streamAskDocument(documentId, question.trim(), (event) => {
+        if (event.type === "meta") {
+          setAnswer({
+            answer: "",
+            citations: event.citations,
+            mode: event.mode,
+            provider: event.provider,
+            model: event.model,
+            fallback_reason: event.fallback_reason
+          });
+          return;
+        }
+        if (event.type === "token") {
+          setAnswer((current) =>
+            current ? { ...current, answer: current.answer + event.token } : current
+          );
+        }
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "问答失败");
     } finally {
@@ -42,7 +60,7 @@ export function AskPanel({ documentId }: { documentId: string }) {
           />
           <button className="primary-action" type="submit" disabled={isAsking}>
             <Send size={17} />
-            {isAsking ? "检索中" : "提问"}
+            {isAsking ? "生成中" : "提问"}
           </button>
         </form>
 

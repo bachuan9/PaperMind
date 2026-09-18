@@ -75,3 +75,21 @@ export type LlmCallLog = {
   citation_count: number;
   error?: string | null;
 };
+
+export type AskStreamEvent =
+  | {
+      type: "meta";
+      mode: "model" | "extractive";
+      provider: string;
+      model?: string | null;
+      fallback_reason?: string | null;
+      citations: Citation[];
+    }
+  | {
+      type: "token";
+      token: string;
+    }
+  | {
+      type: "done";
+      answer: string;
+    };
