@@ -10,7 +10,7 @@ async def answer_with_model(
     question: str,
     citations: list[Citation],
 ) -> str | None:
-    if not settings.openai_api_key or not citations:
+    if not settings.deepseek_api_key or not citations:
         return None
 
     context = "\n\n".join(
@@ -26,7 +26,7 @@ async def answer_with_model(
     )
 
     payload = {
-        "model": settings.openai_model,
+        "model": settings.llm_model,
         "messages": [
             {
                 "role": "system",
@@ -37,9 +37,9 @@ async def answer_with_model(
         "temperature": 0.2,
     }
 
-    url = settings.openai_base_url.rstrip("/") + "/chat/completions"
+    url = settings.deepseek_base_url.rstrip("/") + "/chat/completions"
     headers = {
-        "Authorization": f"Bearer {settings.openai_api_key}",
+        "Authorization": f"Bearer {settings.deepseek_api_key}",
         "Content-Type": "application/json",
     }
 

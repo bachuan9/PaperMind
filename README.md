@@ -11,7 +11,7 @@ PaperMind 是一个面向简历项目和作品集展示的 AI 论文/文档阅�
 - 返回带引用片段的回答
 - 生成文档洞察，包括摘要、关键词、提纲和建议追问
 - 未配置模型 API Key 时，自动使用基于原文片段的抽取式回答兜底
-- 预留 OpenAI-compatible 模型接口，方便后续接入真实大模型
+- 预留 SiliconFlow DeepSeek 模型接口，方便后续接入真实大模型
 
 ## 技术栈
 
@@ -19,7 +19,7 @@ PaperMind 是一个面向简历项目和作品集展示的 AI 论文/文档阅�
 - 后端：FastAPI、Python
 - 存储：本地 JSON 文件，适合第一版 MVP 演示
 - 文档解析：pypdf、文本解析器
-- AI 接入：OpenAI-compatible Chat Completions API
+- AI 接入：SiliconFlow DeepSeek Chat Completions API
 - 文档洞察：本地启发式分析，后续可升级为模型结构化输出
 
 ## 项目结构
@@ -95,24 +95,24 @@ AI_SERVICE_PORT=8000
 AI_DATA_DIR=./data
 AI_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 
-OPENAI_API_KEY=
-OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_MODEL=gpt-4o-mini
+DEEPSEEK_BASE_URL=https://api.siliconflow.cn/v1
+DEEPSEEK_API_KEY=
+LLM_MODEL=deepseek-ai/DeepSeek-V4-Flash
 ```
 
-如果暂时没有模型 Key，可以保持 `OPENAI_API_KEY` 为空。系统会自动使用抽取式回答兜底，仍然可以演示上传、解析、检索和引用展示。
+如果暂时没有模型 Key，可以保持 `DEEPSEEK_API_KEY` 为空。系统会自动使用抽取式回答兜底，仍然可以演示上传、解析、检索和引用展示。
 
 ## 接入大模型
 
 如果要接入真实模型，在 `.env` 中填写：
 
 ```bash
-OPENAI_API_KEY=your_key
-OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_MODEL=gpt-4o-mini
+DEEPSEEK_BASE_URL=https://api.siliconflow.cn/v1
+DEEPSEEK_API_KEY=your_key
+LLM_MODEL=deepseek-ai/DeepSeek-V4-Flash
 ```
 
-只要服务兼容 OpenAI `/chat/completions` 接口，也可以把 `OPENAI_BASE_URL` 改成其他供应商地址。
+当前项目默认使用 SiliconFlow 的 `/chat/completions` 接口和 DeepSeek 模型。
 
 修改 `.env` 后，需要重启 AI 服务。
 
@@ -155,7 +155,7 @@ samples/rag-notes.md
 ## 简历写法参考
 
 ```text
-独立开发 PaperMind AI 文档阅读平台，基于 Next.js、TypeScript、FastAPI 和 Python 实现文档上传、文本解析、分块检索、基于引用的问答、文档洞察和摘要展示。封装 OpenAI-compatible 模型调用层，并在未配置模型时提供基于原文片段的兜底回答，提升系统可演示性和稳定性。
+独立开发 PaperMind AI 文档阅读平台，基于 Next.js、TypeScript、FastAPI 和 Python 实现文档上传、文本解析、分块检索、基于引用的问答、文档洞察和摘要展示。封装 SiliconFlow DeepSeek 模型调用层，并在未配置模型时提供基于原文片段的兜底回答，提升系统可演示性和稳定性。
 ```
 
 后续可以继续扩展为：

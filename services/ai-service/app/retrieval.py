@@ -101,7 +101,7 @@ def build_extractive_answer(question: str, citations: list[Citation]) -> str:
     lines.extend(
         [
             "",
-            "\u5982\u679c\u4f60\u60f3\u8981\u66f4\u81ea\u7136\u7684\u89e3\u91ca\u3001\u603b\u7ed3\u6216\u63a8\u7406\uff0c\u9700\u8981\u5728 .env \u4e2d\u914d\u7f6e OPENAI_API_KEY\u3002",
+            "\u5982\u679c\u4f60\u60f3\u8981\u66f4\u81ea\u7136\u7684\u89e3\u91ca\u3001\u603b\u7ed3\u6216\u63a8\u7406\uff0c\u9700\u8981\u5728 .env \u4e2d\u914d\u7f6e DEEPSEEK_API_KEY\u3002",
         ]
     )
     return "\n".join(lines)
