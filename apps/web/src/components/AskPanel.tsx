@@ -50,6 +50,15 @@ export function AskPanel({ documentId }: { documentId: string }) {
 
         {answer ? (
           <div className="answer">
+            <div className="answer-meta">
+              <span className={`mode-chip ${answer.mode}`}>
+                {answer.mode === "model" ? "DeepSeek 模型" : "本地兜底"}
+              </span>
+              <span>{answer.model ?? answer.provider}</span>
+            </div>
+            {answer.fallback_reason ? (
+              <div className="fallback-note">{answer.fallback_reason}</div>
+            ) : null}
             <div className="answer-body">{answer.answer}</div>
             <div className="citation-list">
               {answer.citations.map((citation, index) => (

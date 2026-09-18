@@ -37,6 +37,9 @@ export type AskResponse = {
   answer: string;
   citations: Citation[];
   mode: "model" | "extractive";
+  provider: string;
+  model?: string | null;
+  fallback_reason?: string | null;
 };
 
 export type InsightSection = {
@@ -50,4 +53,25 @@ export type DocumentInsightResponse = {
   sections: InsightSection[];
   suggested_questions: string[];
   mode: "model" | "extractive";
+};
+
+export type ModelStatusResponse = {
+  provider: string;
+  model: string;
+  base_url: string;
+  configured: boolean;
+};
+
+export type LlmCallLog = {
+  id: string;
+  created_at: string;
+  document_id: string;
+  question_preview: string;
+  provider: string;
+  model: string;
+  mode: "model" | "extractive";
+  status: "success" | "skipped" | "failed";
+  latency_ms: number;
+  citation_count: number;
+  error?: string | null;
 };

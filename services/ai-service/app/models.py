@@ -48,6 +48,9 @@ class AskResponse(BaseModel):
     answer: str
     citations: list[Citation]
     mode: Literal["model", "extractive"]
+    provider: str = "local"
+    model: str | None = None
+    fallback_reason: str | None = None
 
 
 class InsightSection(BaseModel):
@@ -61,3 +64,24 @@ class DocumentInsightResponse(BaseModel):
     sections: list[InsightSection]
     suggested_questions: list[str]
     mode: Literal["model", "extractive"]
+
+
+class ModelStatusResponse(BaseModel):
+    provider: str
+    model: str
+    base_url: str
+    configured: bool
+
+
+class LlmCallLog(BaseModel):
+    id: str
+    created_at: datetime
+    document_id: str
+    question_preview: str
+    provider: str
+    model: str
+    mode: Literal["model", "extractive"]
+    status: Literal["success", "skipped", "failed"]
+    latency_ms: int
+    citation_count: int
+    error: str | None = None

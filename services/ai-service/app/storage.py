@@ -3,7 +3,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .models import DocumentChunk, DocumentDetail, DocumentSummary
+from .models import DocumentChunk, DocumentDetail, DocumentSummary, LlmCallLog
 
 
 class JsonStore:
@@ -15,7 +15,7 @@ class JsonStore:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.upload_dir.mkdir(parents=True, exist_ok=True)
         if not self.store_path.exists():
-            self._write({"documents": {}, "chunks": {}})
+            self._write({"documents": {}, "chunks": {}, "llm_logs": []})
 
     def list_documents(self) -> list[DocumentSummary]:
         data = self._read()
@@ -65,14 +65,31 @@ class JsonStore:
         target.write_bytes(content)
         return target
 
+    def append_llm_log(self, log: LlmCallLog, limit: int = 100) -> LlmCallLog:
+        with self._lock:
+            data = self._read()
+            logs = data.setdefault("llm_logs", [])
+            logs.insert(0, log.model_dump(mode="json"))
+            data["llm_logs"] = logs[:limit]
+            self._write(data)
+        return log
+
+    def list_llm_logs(self, limit: int = 30) -> list[LlmCallLog]:
+        data = self._read()
+        logs = [
+            LlmCallLog.model_validate(item)
+            for item in data.get("llm_logs", [])[:limit]
+        ]
+        return logs
+
     def _read(self) -> dict:
         try:
             return json.loads(self.store_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             backup = self.store_path.with_suffix(f".{now_utc().timestamp():.0f}.broken.json")
             self.store_path.replace(backup)
-            self._write({"documents": {}, "chunks": {}})
-            return {"documents": {}, "chunks": {}}
+            self._write({"documents": {}, "chunks": {}, "llm_logs": []})
+            return {"documents": {}, "chunks": {}, "llm_logs": []}
 
     def _write(self, data: dict) -> None:
         self.store_path.write_text(

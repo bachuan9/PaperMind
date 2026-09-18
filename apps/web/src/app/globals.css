@@ -578,6 +578,43 @@ button {
   margin-top: 18px;
 }
 
+.answer-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mode-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.mode-chip.model {
+  color: #184e8a;
+  background: var(--blue-soft);
+}
+
+.mode-chip.extractive {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.fallback-note {
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: var(--warning);
+  background: var(--warning-soft);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .answer-body {
   padding: 14px;
   border-radius: 8px;

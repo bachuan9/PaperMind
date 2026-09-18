@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { BookOpen, Database, FileText, Home, Network } from "lucide-react";
 import { useEffect, useState } from "react";
-import { getHealth } from "@/lib/api";
+import { getHealth, getModelStatus } from "@/lib/api";
+import type { ModelStatusResponse } from "@/types";
 
 type AppShellProps = {
   children: React.ReactNode;
@@ -12,11 +13,15 @@ type AppShellProps = {
 
 export function AppShell({ children, active = "library" }: AppShellProps) {
   const [online, setOnline] = useState(false);
+  const [modelStatus, setModelStatus] = useState<ModelStatusResponse | null>(null);
 
   useEffect(() => {
     getHealth()
       .then(() => setOnline(true))
       .catch(() => setOnline(false));
+    getModelStatus()
+      .then(setModelStatus)
+      .catch(() => setModelStatus(null));
   }, []);
 
   return (
@@ -62,6 +67,10 @@ export function AppShell({ children, active = "library" }: AppShellProps) {
           <div className="status-line">
             <span>Storage</span>
             <span>Local JSON</span>
+          </div>
+          <div className="status-line">
+            <span>Model</span>
+            <span>{modelStatus?.configured ? "DeepSeek" : "Fallback"}</span>
           </div>
         </div>
       </aside>

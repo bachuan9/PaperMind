@@ -2,7 +2,9 @@ import type {
   AskResponse,
   DocumentDetail,
   DocumentInsightResponse,
-  DocumentSummary
+  DocumentSummary,
+  LlmCallLog,
+  ModelStatusResponse
 } from "@/types";
 
 const API_BASE =
@@ -26,6 +28,14 @@ async function parseResponse<T>(response: Response): Promise<T> {
 
 export async function getHealth(): Promise<{ status: string }> {
   return parseResponse(await fetch(`${API_BASE}/health`, { cache: "no-store" }));
+}
+
+export async function getModelStatus(): Promise<ModelStatusResponse> {
+  return parseResponse(await fetch(`${API_BASE}/model/status`, { cache: "no-store" }));
+}
+
+export async function listLlmLogs(): Promise<LlmCallLog[]> {
+  return parseResponse(await fetch(`${API_BASE}/llm/logs`, { cache: "no-store" }));
 }
 
 export async function listDocuments(): Promise<DocumentSummary[]> {

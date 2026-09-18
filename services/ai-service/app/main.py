@@ -13,9 +13,12 @@ from .models import (
     DocumentDetail,
     DocumentInsightResponse,
     DocumentSummary,
+    LlmCallLog,
+    ModelStatusResponse,
 )
 from .parser import build_summary, chunk_pages, parse_document, validate_extension
 from .retrieval import build_extractive_answer, retrieve
+from .runtime import get_model_status
 from .settings import Settings, get_settings
 from .storage import JsonStore, now_utc
 
@@ -38,6 +41,16 @@ app.add_middleware(
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/model/status", response_model=ModelStatusResponse)
+def model_status(settings: Settings = Depends(get_settings)) -> ModelStatusResponse:
+    return get_model_status(settings)
+
+
+@app.get("/llm/logs", response_model=list[LlmCallLog])
+def list_llm_logs(store: JsonStore = Depends(get_store)) -> list[LlmCallLog]:
+    return store.list_llm_logs()
 
 
 @app.get("/documents", response_model=list[DocumentSummary])
@@ -159,16 +172,76 @@ async def ask_document(
         raise HTTPException(status_code=409, detail="文档尚未解析完成")
 
     citations = retrieve(request.question, document.chunks)
-    model_answer = await answer_with_model(
+    model_result = await answer_with_model(
         settings=settings,
         question=request.question,
         citations=citations,
     )
-    if model_answer:
-        return AskResponse(answer=model_answer, citations=citations, mode="model")
+    if model_result.answer:
+        store.append_llm_log(
+            build_llm_log(
+                document_id=document_id,
+                question=request.question,
+                settings=settings,
+                mode="model",
+                status=model_result.status,
+                latency_ms=model_result.latency_ms,
+                citation_count=len(citations),
+                error=None,
+            )
+        )
+        return AskResponse(
+            answer=model_result.answer,
+            citations=citations,
+            mode="model",
+            provider="SiliconFlow",
+            model=settings.llm_model,
+        )
 
+    fallback_answer = build_extractive_answer(request.question, citations)
+    store.append_llm_log(
+        build_llm_log(
+            document_id=document_id,
+            question=request.question,
+            settings=settings,
+            mode="extractive",
+            status=model_result.status,
+            latency_ms=model_result.latency_ms,
+            citation_count=len(citations),
+            error=model_result.error,
+        )
+    )
     return AskResponse(
-        answer=build_extractive_answer(request.question, citations),
+        answer=fallback_answer,
         citations=citations,
         mode="extractive",
+        provider="local",
+        model=None,
+        fallback_reason=model_result.error,
+    )
+
+
+def build_llm_log(
+    *,
+    document_id: str,
+    question: str,
+    settings: Settings,
+    mode: str,
+    status: str,
+    latency_ms: int,
+    citation_count: int,
+    error: str | None,
+) -> LlmCallLog:
+    return LlmCallLog(
+        id=str(uuid4()),
+        created_at=now_utc(),
+        document_id=document_id,
+        question_preview=question[:120],
+        provider="SiliconFlow" if mode == "model" else "local",
+        model=settings.llm_model,
+        mode=mode,
+        status=status,
+        latency_ms=latency_ms,
+        citation_count=citation_count,
+        error=error,
     )
