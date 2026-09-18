@@ -6,6 +6,7 @@ from app.models import (
     DocumentNote,
     DocumentSummary,
     LlmCallLog,
+    ProcessingJob,
 )
 from app.runtime import get_model_status
 from app.settings import Settings
@@ -73,6 +74,18 @@ def test_json_store_persists_conversations_and_vectors(tmp_path: Path) -> None:
     )
 
     store.save_document(document, [chunk], {"chunk-1": [0.2, 0.8]})
+    store.save_processing_job(
+        ProcessingJob(
+            id="job-1",
+            document_id="doc-1",
+            status="succeeded",
+            attempts=1,
+            max_attempts=1,
+            created_at=now_utc(),
+            updated_at=now_utc(),
+            finished_at=now_utc(),
+        )
+    )
     conversation = store.create_conversation("doc-1", "\u5f15\u7528\u6eaf\u6e90")
     store.append_message(
         ConversationMessage(
@@ -93,6 +106,7 @@ def test_json_store_persists_conversations_and_vectors(tmp_path: Path) -> None:
     assert store.delete_document("doc-1") is True
     assert store.get_document_vectors("doc-1") == {}
     assert store.list_conversations("doc-1") == []
+    assert store.list_processing_jobs("doc-1") == []
 
 
 def test_json_store_persists_document_notes(tmp_path: Path) -> None:

@@ -111,6 +111,7 @@ AI_SERVICE_PORT=8000
 AI_DATA_DIR=./data
 AI_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 AI_MAX_UPLOAD_MB=25
+AI_PARSE_MAX_ATTEMPTS=2
 AI_RATE_LIMIT_PER_MINUTE=120
 AI_REQUEST_LOG_ENABLED=true
 
@@ -193,3 +194,4 @@ samples/rag-notes.md
 - 问答增加结果缓存，相同文档下的独立相同问题会命中缓存，并继续写入当前对话历史。
 - 模型调用日志增加 Token 用量、估算费用和缓存命中标记，便于排查调用成本。
 - 费用估算由 `LLM_INPUT_PRICE_PER_1M_TOKENS` 和 `LLM_OUTPUT_PRICE_PER_1M_TOKENS` 控制，默认值为 0。
+- 文档解析会写入 `processing_jobs` 任务记录，并按 `AI_PARSE_MAX_ATTEMPTS` 自动重试。

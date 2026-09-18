@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.llm import ModelAnswerResult
 from app.main import app, get_store
+from app.parser import ParsedPage
 from app.settings import Settings, get_settings
 from app.storage import JsonStore
 
@@ -79,6 +80,96 @@ def test_duplicate_upload_returns_existing_document(tmp_path: Path) -> None:
         assert first_upload.json()["id"] == second_upload.json()["id"]
         assert documents.status_code == 200
         assert len(documents.json()) == 1
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_upload_records_processing_job_and_retries_parse(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = JsonStore(tmp_path)
+    parse_call_count = 0
+
+    def flaky_parse_document(_: Path) -> list[ParsedPage]:
+        nonlocal parse_call_count
+        parse_call_count += 1
+        if parse_call_count == 1:
+            raise ValueError("temporary parse failure")
+        return [ParsedPage(page_number=None, text="Retry parsing succeeds.")]
+
+    monkeypatch.setattr("app.main.parse_document", flaky_parse_document)
+    app.dependency_overrides[get_store] = lambda: store
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        ai_data_dir=tmp_path,
+        ai_parse_max_attempts=2,
+        deepseek_api_key="",
+    )
+
+    try:
+        client = TestClient(app)
+        upload = client.post(
+            "/documents",
+            files={
+                "file": (
+                    "retry.md",
+                    b"Retry parsing succeeds.",
+                    "text/markdown",
+                )
+            },
+        )
+        assert upload.status_code == 200
+        document_id = upload.json()["id"]
+        jobs = client.get(f"/documents/{document_id}/processing-jobs")
+
+        assert upload.json()["status"] == "ready"
+        assert parse_call_count == 2
+        assert jobs.status_code == 200
+        assert jobs.json()[0]["status"] == "succeeded"
+        assert jobs.json()[0]["attempts"] == 2
+        assert jobs.json()[0]["max_attempts"] == 2
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_upload_records_failed_processing_job_after_retries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = JsonStore(tmp_path)
+
+    def failing_parse_document(_: Path) -> list[ParsedPage]:
+        raise ValueError("permanent parse failure")
+
+    monkeypatch.setattr("app.main.parse_document", failing_parse_document)
+    app.dependency_overrides[get_store] = lambda: store
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        ai_data_dir=tmp_path,
+        ai_parse_max_attempts=2,
+        deepseek_api_key="",
+    )
+
+    try:
+        client = TestClient(app)
+        upload = client.post(
+            "/documents",
+            files={
+                "file": (
+                    "broken.md",
+                    b"Broken document",
+                    "text/markdown",
+                )
+            },
+        )
+        assert upload.status_code == 200
+        document_id = upload.json()["id"]
+        jobs = client.get(f"/documents/{document_id}/processing-jobs")
+
+        assert upload.json()["status"] == "failed"
+        assert jobs.status_code == 200
+        assert jobs.json()[0]["status"] == "failed"
+        assert jobs.json()[0]["attempts"] == 2
+        assert jobs.json()[0]["error"] == "permanent parse failure"
     finally:
         app.dependency_overrides.clear()
 

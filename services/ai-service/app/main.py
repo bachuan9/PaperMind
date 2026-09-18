@@ -35,8 +35,15 @@ from .models import (
     LlmCallLog,
     ModelStatusResponse,
     NoteRequest,
+    ProcessingJob,
 )
-from .parser import build_summary, chunk_pages, parse_document, validate_extension
+from .parser import (
+    ParsedPage,
+    build_summary,
+    chunk_pages,
+    parse_document,
+    validate_extension,
+)
 from .retrieval import build_extractive_answer, retrieve
 from .runtime import get_model_status
 from .settings import Settings, get_settings
@@ -110,9 +117,25 @@ async def create_document(
     now = now_utc()
     title = Path(filename).stem or "Untitled"
     upload_path = store.save_upload(document_id, filename, content)
+    max_parse_attempts = max(settings.ai_parse_max_attempts, 1)
+    job = ProcessingJob(
+        id=str(uuid4()),
+        document_id=document_id,
+        status="processing",
+        attempts=0,
+        max_attempts=max_parse_attempts,
+        created_at=now,
+        updated_at=now,
+        started_at=now,
+    )
+    store.save_processing_job(job)
+    parse_attempts = 0
 
     try:
-        pages = parse_document(upload_path)
+        pages, parse_attempts = parse_document_with_retries(
+            upload_path,
+            max_attempts=max_parse_attempts,
+        )
         if not pages:
             raise ValueError("未解析到可用文本")
         raw_chunks = chunk_pages(pages)
@@ -140,6 +163,15 @@ async def create_document(
             summary=build_summary(pages),
             content_hash=content_hash,
         )
+        finished_at = now_utc()
+        job = job.model_copy(
+            update={
+                "status": "succeeded",
+                "attempts": parse_attempts,
+                "updated_at": finished_at,
+                "finished_at": finished_at,
+            }
+        )
     except Exception as error:
         document = DocumentSummary(
             id=document_id,
@@ -154,8 +186,39 @@ async def create_document(
         )
         chunks = []
         vectors = {}
+        finished_at = now_utc()
+        job = job.model_copy(
+            update={
+                "status": "failed",
+                "attempts": parse_attempts or max_parse_attempts,
+                "error": str(error),
+                "updated_at": finished_at,
+                "finished_at": finished_at,
+            }
+        )
 
+    store.save_processing_job(job)
     return store.save_document(document, chunks, vectors)
+
+
+def parse_document_with_retries(
+    path: Path,
+    *,
+    max_attempts: int,
+) -> tuple[list[ParsedPage], int]:
+    last_error: Exception | None = None
+    attempts = max(max_attempts, 1)
+    for attempt in range(1, attempts + 1):
+        try:
+            pages = parse_document(path)
+            if not pages:
+                raise ValueError("未解析到可用文本")
+            return pages, attempt
+        except Exception as error:
+            last_error = error
+    if last_error is not None:
+        raise last_error
+    raise ValueError("未解析到可用文本")
 
 
 @app.get("/documents/{document_id}", response_model=DocumentDetail)
@@ -167,6 +230,17 @@ def get_document(
     if document is None:
         raise HTTPException(status_code=404, detail="文档不存在")
     return document
+
+
+@app.get("/documents/{document_id}/processing-jobs", response_model=list[ProcessingJob])
+def list_document_processing_jobs(
+    document_id: str,
+    store: JsonStore = Depends(get_store),
+) -> list[ProcessingJob]:
+    document = store.get_document(document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    return store.list_processing_jobs(document_id)
 
 
 @app.get("/documents/{document_id}/insights", response_model=DocumentInsightResponse)

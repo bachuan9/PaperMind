@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     ai_data_dir: Path = Path("./data")
     ai_allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     ai_max_upload_mb: int = 25
+    ai_parse_max_attempts: int = 2
     ai_rate_limit_per_minute: int = 120
     ai_request_log_enabled: bool = True
     deepseek_api_key: str = ""

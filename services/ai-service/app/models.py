@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 DocumentStatus = Literal["ready", "failed", "processing"]
 MessageRole = Literal["user", "assistant"]
+ProcessingJobStatus = Literal["queued", "processing", "succeeded", "failed"]
 
 
 class DocumentChunk(BaseModel):
@@ -33,6 +34,20 @@ class DocumentSummary(BaseModel):
 
 class DocumentDetail(DocumentSummary):
     chunks: list[DocumentChunk] = Field(default_factory=list)
+
+
+class ProcessingJob(BaseModel):
+    id: str
+    document_id: str
+    job_type: Literal["parse_document"] = "parse_document"
+    status: ProcessingJobStatus
+    attempts: int = 0
+    max_attempts: int = 1
+    error: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
 
 
 class AskRequest(BaseModel):

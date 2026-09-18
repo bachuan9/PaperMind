@@ -15,6 +15,7 @@ from .models import (
     DocumentNote,
     DocumentSummary,
     LlmCallLog,
+    ProcessingJob,
 )
 
 
@@ -99,6 +100,7 @@ class JsonStore:
             data.get("chunks", {}).pop(document_id, None)
             data.get("vectors", {}).pop(document_id, None)
             data.get("notes", {}).pop(document_id, None)
+            data.get("processing_jobs", {}).pop(document_id, None)
             for cache_key, cache_entry in list(data.get("ask_cache", {}).items()):
                 if cache_entry.get("document_id") == document_id:
                     data["ask_cache"].pop(cache_key, None)
@@ -118,6 +120,30 @@ class JsonStore:
         target = self.upload_dir / f"{document_id}{extension}"
         target.write_bytes(content)
         return target
+
+    def save_processing_job(self, job: ProcessingJob) -> ProcessingJob:
+        with self._lock:
+            data = self._read()
+            jobs = data.setdefault("processing_jobs", {}).setdefault(
+                job.document_id,
+                [],
+            )
+            for index, raw_job in enumerate(jobs):
+                if raw_job.get("id") == job.id:
+                    jobs[index] = job.model_dump(mode="json")
+                    break
+            else:
+                jobs.insert(0, job.model_dump(mode="json"))
+            self._write(data)
+        return job
+
+    def list_processing_jobs(self, document_id: str) -> list[ProcessingJob]:
+        data = self._read()
+        jobs = [
+            ProcessingJob.model_validate(item)
+            for item in data.get("processing_jobs", {}).get(document_id, [])
+        ]
+        return sorted(jobs, key=lambda item: item.created_at, reverse=True)
 
     def append_llm_log(self, log: LlmCallLog, limit: int = 100) -> LlmCallLog:
         with self._lock:
@@ -274,6 +300,7 @@ def empty_store() -> dict:
         "documents": {},
         "chunks": {},
         "vectors": {},
+        "processing_jobs": {},
         "ask_cache": {},
         "llm_logs": [],
         "conversations": {},
