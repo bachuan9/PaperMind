@@ -1,0 +1,21 @@
+{
+  "name": "papermind",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "dev:web": "npm --workspace apps/web run dev",
+    "build:web": "npm --workspace apps/web run build",
+    "lint:web": "npm --workspace apps/web run lint",
+    "dev:api": ".venv\\Scripts\\python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --app-dir services/ai-service",
+    "test:api": ".venv\\Scripts\\python -m pytest",
+    "format:api": ".venv\\Scripts\\python -m ruff format services/ai-service/app services/ai-service/tests",
+    "lint:api": ".venv\\Scripts\\python -m ruff check services/ai-service/app services/ai-service/tests",
+    "dev": "npm run dev:api"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,20 @@
+services:
+  ai-service:
+    build:
+      context: ./services/ai-service
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./services/ai-service/data:/app/data
+
+  web:
+    build:
+      context: ./apps/web
+    environment:
+      NEXT_PUBLIC_AI_SERVICE_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - ai-service

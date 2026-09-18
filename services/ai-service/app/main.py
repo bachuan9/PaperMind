@@ -1,0 +1,153 @@
+from pathlib import Path
+from uuid import uuid4
+
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+
+from .llm import answer_with_model
+from .models import AskRequest, AskResponse, DocumentChunk, DocumentDetail, DocumentSummary
+from .parser import build_summary, chunk_pages, parse_document, validate_extension
+from .retrieval import build_extractive_answer, retrieve
+from .settings import Settings, get_settings
+from .storage import JsonStore, now_utc
+
+
+def get_store(settings: Settings = Depends(get_settings)) -> JsonStore:
+    return JsonStore(settings.ai_data_dir)
+
+
+settings = get_settings()
+app = FastAPI(title="PaperMind AI Service", version="0.1.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.get("/documents", response_model=list[DocumentSummary])
+def list_documents(store: JsonStore = Depends(get_store)) -> list[DocumentSummary]:
+    return store.list_documents()
+
+
+@app.post("/documents", response_model=DocumentSummary)
+async def create_document(
+    file: UploadFile = File(...),
+    store: JsonStore = Depends(get_store),
+) -> DocumentSummary:
+    filename = file.filename or "document"
+    try:
+        validate_extension(filename)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="文件内容为空")
+    if len(content) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="文件不能超过 25MB")
+
+    document_id = str(uuid4())
+    now = now_utc()
+    title = Path(filename).stem or "Untitled"
+    upload_path = store.save_upload(document_id, filename, content)
+
+    try:
+        pages = parse_document(upload_path)
+        if not pages:
+            raise ValueError("未解析到可用文本")
+        raw_chunks = chunk_pages(pages)
+        chunks = [
+            DocumentChunk(
+                id=str(uuid4()),
+                document_id=document_id,
+                index=index,
+                text=text,
+                page_number=page_number,
+            )
+            for index, (page_number, text) in enumerate(raw_chunks)
+        ]
+        document = DocumentSummary(
+            id=document_id,
+            title=title,
+            filename=filename,
+            status="ready",
+            created_at=now,
+            updated_at=now_utc(),
+            size_bytes=len(content),
+            page_count=max((page.page_number or 1 for page in pages), default=1),
+            chunk_count=len(chunks),
+            summary=build_summary(pages),
+        )
+    except Exception as error:
+        document = DocumentSummary(
+            id=document_id,
+            title=title,
+            filename=filename,
+            status="failed",
+            created_at=now,
+            updated_at=now_utc(),
+            size_bytes=len(content),
+            error=str(error),
+        )
+        chunks = []
+
+    return store.save_document(document, chunks)
+
+
+@app.get("/documents/{document_id}", response_model=DocumentDetail)
+def get_document(
+    document_id: str,
+    store: JsonStore = Depends(get_store),
+) -> DocumentDetail:
+    document = store.get_document(document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    return document
+
+
+@app.delete("/documents/{document_id}")
+def delete_document(
+    document_id: str,
+    store: JsonStore = Depends(get_store),
+) -> dict[str, bool]:
+    deleted = store.delete_document(document_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    return {"ok": True}
+
+
+@app.post("/documents/{document_id}/ask", response_model=AskResponse)
+async def ask_document(
+    document_id: str,
+    request: AskRequest,
+    settings: Settings = Depends(get_settings),
+    store: JsonStore = Depends(get_store),
+) -> AskResponse:
+    document = store.get_document(document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    if document.status != "ready":
+        raise HTTPException(status_code=409, detail="文档尚未解析完成")
+
+    citations = retrieve(request.question, document.chunks)
+    model_answer = await answer_with_model(
+        settings=settings,
+        question=request.question,
+        citations=citations,
+    )
+    if model_answer:
+        return AskResponse(answer=model_answer, citations=citations, mode="model")
+
+    return AskResponse(
+        answer=build_extractive_answer(request.question, citations),
+        citations=citations,
+        mode="extractive",
+    )

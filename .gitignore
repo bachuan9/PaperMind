@@ -1,0 +1,17 @@
+.env
+.env.local
+.venv/
+node_modules/
+.next/
+dist/
+build/
+coverage/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+data/
+services/ai-service/data/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
