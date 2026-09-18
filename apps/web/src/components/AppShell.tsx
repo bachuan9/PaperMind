@@ -8,7 +8,7 @@ import type { ModelStatusResponse } from "@/types";
 
 type AppShellProps = {
   children: React.ReactNode;
-  active?: "library" | "reader";
+  active?: "library" | "reader" | "logs";
 };
 
 export function AppShell({ children, active = "library" }: AppShellProps) {
@@ -50,10 +50,10 @@ export function AppShell({ children, active = "library" }: AppShellProps) {
             <Network size={17} />
             工作流
           </span>
-          <span className="nav-item">
+          <Link className={`nav-item ${active === "logs" ? "is-active" : ""}`} href="/logs">
             <Database size={17} />
             调用日志
-          </span>
+          </Link>
         </nav>
 
         <div className="sidebar-footer">
