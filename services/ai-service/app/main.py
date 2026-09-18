@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 from time import perf_counter
@@ -15,10 +16,12 @@ from .llm import (
     ModelStreamError,
     answer_with_model,
     elapsed_ms,
+    estimate_chat_token_usage,
     generate_insights_with_model,
     stream_answer_with_model,
 )
 from .models import (
+    AskCacheEntry,
     AskRequest,
     AskResponse,
     Conversation,
@@ -37,7 +40,7 @@ from .parser import build_summary, chunk_pages, parse_document, validate_extensi
 from .retrieval import build_extractive_answer, retrieve
 from .runtime import get_model_status
 from .settings import Settings, get_settings
-from .storage import JsonStore, now_utc
+from .storage import JsonStore, build_ask_cache_key, now_utc
 
 
 def get_store(settings: Settings = Depends(get_settings)) -> JsonStore:
@@ -98,6 +101,11 @@ async def create_document(
             detail=f"文件不能超过 {settings.ai_max_upload_mb}MB",
         )
 
+    content_hash = hashlib.sha256(content).hexdigest()
+    existing_document = store.find_document_by_hash(content_hash)
+    if existing_document is not None:
+        return existing_document
+
     document_id = str(uuid4())
     now = now_utc()
     title = Path(filename).stem or "Untitled"
@@ -130,6 +138,7 @@ async def create_document(
             page_count=max((page.page_number or 1 for page in pages), default=1),
             chunk_count=len(chunks),
             summary=build_summary(pages),
+            content_hash=content_hash,
         )
     except Exception as error:
         document = DocumentSummary(
@@ -141,6 +150,7 @@ async def create_document(
             updated_at=now_utc(),
             size_bytes=len(content),
             error=str(error),
+            content_hash=content_hash,
         )
         chunks = []
         vectors = {}
@@ -186,6 +196,10 @@ async def get_document_insights(
                 latency_ms=model_result.latency_ms,
                 citation_count=len(document.chunks),
                 error=model_result.error,
+                prompt_tokens=model_result.prompt_tokens,
+                completion_tokens=model_result.completion_tokens,
+                total_tokens=model_result.total_tokens,
+                estimated_cost_usd=model_result.estimated_cost_usd,
             )
         )
     return model_result.insights or fallback_insights
@@ -283,6 +297,19 @@ async def ask_document(
         question=request.question,
         conversation_id=request.conversation_id,
     )
+    use_question_cache = not history
+    if use_question_cache:
+        cached_response = store.get_ask_cache(document_id, request.question)
+        if cached_response is not None:
+            return answer_from_cache(
+                cache_entry=cached_response,
+                conversation_id=conversation.id,
+                document_id=document_id,
+                question=request.question,
+                settings=settings,
+                store=store,
+            )
+
     citations = retrieve(
         request.question,
         document.chunks,
@@ -315,9 +342,13 @@ async def ask_document(
                 latency_ms=model_result.latency_ms,
                 citation_count=len(citations),
                 error=None,
+                prompt_tokens=model_result.prompt_tokens,
+                completion_tokens=model_result.completion_tokens,
+                total_tokens=model_result.total_tokens,
+                estimated_cost_usd=model_result.estimated_cost_usd,
             )
         )
-        return AskResponse(
+        response = AskResponse(
             answer=model_result.answer,
             citations=citations,
             conversation_id=conversation.id,
@@ -325,6 +356,19 @@ async def ask_document(
             provider="SiliconFlow",
             model=settings.llm_model,
         )
+        if use_question_cache:
+            store.save_ask_cache(
+                build_ask_cache_entry(
+                    document_id=document_id,
+                    question=request.question,
+                    response=response,
+                    prompt_tokens=model_result.prompt_tokens,
+                    completion_tokens=model_result.completion_tokens,
+                    total_tokens=model_result.total_tokens,
+                    estimated_cost_usd=model_result.estimated_cost_usd,
+                )
+            )
+        return response
 
     fallback_answer = build_extractive_answer(request.question, citations)
     store.append_message(
@@ -347,6 +391,10 @@ async def ask_document(
             latency_ms=model_result.latency_ms,
             citation_count=len(citations),
             error=model_result.error,
+            prompt_tokens=model_result.prompt_tokens,
+            completion_tokens=model_result.completion_tokens,
+            total_tokens=model_result.total_tokens,
+            estimated_cost_usd=model_result.estimated_cost_usd,
         )
     )
     return AskResponse(
@@ -379,6 +427,22 @@ async def ask_document_stream(
         question=request.question,
         conversation_id=request.conversation_id,
     )
+    use_question_cache = not history
+    if use_question_cache:
+        cached_response = store.get_ask_cache(document_id, request.question)
+        if cached_response is not None:
+            return StreamingResponse(
+                stream_cached_answer_events(
+                    cache_entry=cached_response,
+                    document_id=document_id,
+                    question=request.question,
+                    conversation_id=conversation.id,
+                    settings=settings,
+                    store=store,
+                ),
+                media_type="application/x-ndjson",
+            )
+
     citations = retrieve(
         request.question,
         document.chunks,
@@ -399,6 +463,114 @@ async def ask_document_stream(
     )
 
 
+def answer_from_cache(
+    *,
+    cache_entry: AskCacheEntry,
+    conversation_id: str,
+    document_id: str,
+    question: str,
+    settings: Settings,
+    store: JsonStore,
+) -> AskResponse:
+    store.append_message(
+        build_assistant_message(
+            conversation_id=conversation_id,
+            content=cache_entry.answer,
+            citations=cache_entry.citations,
+            mode=cache_entry.mode,
+            provider=cache_entry.provider,
+            model=cache_entry.model,
+        )
+    )
+    store.append_llm_log(
+        build_llm_log(
+            document_id=document_id,
+            question=question,
+            settings=settings,
+            mode=cache_entry.mode,
+            status="skipped",
+            latency_ms=0,
+            citation_count=len(cache_entry.citations),
+            error=None,
+            provider=cache_entry.provider,
+            model=cache_entry.model,
+            cache_hit=True,
+        )
+    )
+    return AskResponse(
+        answer=cache_entry.answer,
+        citations=cache_entry.citations,
+        conversation_id=conversation_id,
+        mode=cache_entry.mode,
+        provider=cache_entry.provider,
+        model=cache_entry.model,
+        fallback_reason=cache_entry.fallback_reason,
+        cache_hit=True,
+    )
+
+
+async def stream_cached_answer_events(
+    *,
+    cache_entry: AskCacheEntry,
+    document_id: str,
+    question: str,
+    conversation_id: str,
+    settings: Settings,
+    store: JsonStore,
+) -> AsyncIterator[str]:
+    response = answer_from_cache(
+        cache_entry=cache_entry,
+        conversation_id=conversation_id,
+        document_id=document_id,
+        question=question,
+        settings=settings,
+        store=store,
+    )
+    yield stream_event(
+        "meta",
+        {
+            "conversation_id": response.conversation_id,
+            "mode": response.mode,
+            "provider": response.provider,
+            "model": response.model,
+            "fallback_reason": response.fallback_reason,
+            "citations": [citation.model_dump() for citation in response.citations],
+            "cache_hit": True,
+        },
+    )
+    for chunk in chunk_text(response.answer):
+        yield stream_event("token", {"token": chunk})
+    yield stream_event("done", {"answer": response.answer})
+
+
+def build_ask_cache_entry(
+    *,
+    document_id: str,
+    question: str,
+    response: AskResponse,
+    prompt_tokens: int,
+    completion_tokens: int,
+    total_tokens: int,
+    estimated_cost_usd: float,
+) -> AskCacheEntry:
+    return AskCacheEntry(
+        cache_key=build_ask_cache_key(document_id, question),
+        document_id=document_id,
+        question=" ".join(question.split()),
+        answer=response.answer,
+        citations=response.citations,
+        mode=response.mode,
+        provider=response.provider,
+        model=response.model,
+        fallback_reason=response.fallback_reason,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        total_tokens=total_tokens,
+        estimated_cost_usd=estimated_cost_usd,
+        created_at=now_utc(),
+    )
+
+
 def build_llm_log(
     *,
     document_id: str,
@@ -409,19 +581,31 @@ def build_llm_log(
     latency_ms: int,
     citation_count: int,
     error: str | None,
+    provider: str | None = None,
+    model: str | None = None,
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+    total_tokens: int = 0,
+    estimated_cost_usd: float = 0.0,
+    cache_hit: bool = False,
 ) -> LlmCallLog:
     return LlmCallLog(
         id=str(uuid4()),
         created_at=now_utc(),
         document_id=document_id,
         question_preview=question[:120],
-        provider="SiliconFlow" if mode == "model" else "local",
-        model=settings.llm_model,
+        provider=provider or ("SiliconFlow" if mode == "model" else "local"),
+        model=model if model is not None else settings.llm_model,
         mode=mode,
         status=status,
         latency_ms=latency_ms,
         citation_count=citation_count,
         error=error,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        total_tokens=total_tokens,
+        estimated_cost_usd=estimated_cost_usd,
+        cache_hit=cache_hit,
     )
 
 
@@ -565,6 +749,14 @@ async def stream_answer_events(
             chunks.append(token)
             yield stream_event("token", {"token": token})
         answer = "".join(chunks)
+        usage = estimate_chat_token_usage(
+            settings=settings,
+            question=question,
+            citations=citations,
+            answer=answer,
+            history=history,
+        )
+        latency_ms = elapsed_ms(started)
         store.append_message(
             build_assistant_message(
                 conversation_id=conversation_id,
@@ -582,11 +774,34 @@ async def stream_answer_events(
                 settings=settings,
                 mode="model",
                 status="success",
-                latency_ms=elapsed_ms(started),
+                latency_ms=latency_ms,
                 citation_count=len(citations),
                 error=None,
+                prompt_tokens=usage.prompt_tokens,
+                completion_tokens=usage.completion_tokens,
+                total_tokens=usage.total_tokens,
+                estimated_cost_usd=usage.estimated_cost_usd,
             )
         )
+        if not history:
+            store.save_ask_cache(
+                build_ask_cache_entry(
+                    document_id=document_id,
+                    question=question,
+                    response=AskResponse(
+                        answer=answer,
+                        citations=citations,
+                        conversation_id=conversation_id,
+                        mode="model",
+                        provider="SiliconFlow",
+                        model=settings.llm_model,
+                    ),
+                    prompt_tokens=usage.prompt_tokens,
+                    completion_tokens=usage.completion_tokens,
+                    total_tokens=usage.total_tokens,
+                    estimated_cost_usd=usage.estimated_cost_usd,
+                )
+            )
         yield stream_event("done", {"answer": answer})
     except ModelStreamError as error:
         fallback_answer = build_extractive_answer(question, citations)

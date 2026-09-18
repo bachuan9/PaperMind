@@ -81,6 +81,9 @@ export function LlmLogsPanel() {
                     <span>{modeLabels[log.mode]}</span>
                     <span>{log.provider}</span>
                     <span>{log.latency_ms} ms</span>
+                    <span>{log.total_tokens} tokens</span>
+                    <span>{formatCost(log.estimated_cost_usd)}</span>
+                    {log.cache_hit ? <span>缓存命中</span> : null}
                     <span>{log.citation_count} 引用</span>
                   </div>
                   {log.error ? <p className="log-error">{log.error}</p> : null}
@@ -102,4 +105,9 @@ function formatDate(value: string) {
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(value));
+}
+
+function formatCost(value: number) {
+  if (value <= 0) return "$0";
+  return `$${value.toFixed(6)}`;
 }

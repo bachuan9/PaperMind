@@ -1,7 +1,9 @@
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
+from app.llm import ModelAnswerResult
 from app.main import app, get_store
 from app.settings import Settings, get_settings
 from app.storage import JsonStore
@@ -46,6 +48,102 @@ def test_ask_endpoint_creates_conversation_history(tmp_path: Path) -> None:
         assert conversations.json()[0]["message_count"] == 2
         assert messages.status_code == 200
         assert [message["role"] for message in messages.json()] == ["user", "assistant"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_duplicate_upload_returns_existing_document(tmp_path: Path) -> None:
+    store = JsonStore(tmp_path)
+    app.dependency_overrides[get_store] = lambda: store
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        ai_data_dir=tmp_path,
+        deepseek_api_key="",
+    )
+
+    try:
+        client = TestClient(app)
+        files = {
+            "file": (
+                "same-notes.md",
+                b"PaperMind stores duplicate uploads only once.",
+                "text/markdown",
+            )
+        }
+
+        first_upload = client.post("/documents", files=files)
+        second_upload = client.post("/documents", files=files)
+        documents = client.get("/documents")
+
+        assert first_upload.status_code == 200
+        assert second_upload.status_code == 200
+        assert first_upload.json()["id"] == second_upload.json()["id"]
+        assert documents.status_code == 200
+        assert len(documents.json()) == 1
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_ask_endpoint_uses_cached_answer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = JsonStore(tmp_path)
+    call_count = 0
+
+    async def fake_answer_with_model(**_: object) -> ModelAnswerResult:
+        nonlocal call_count
+        call_count += 1
+        return ModelAnswerResult(
+            answer="Cached model answer",
+            status="success",
+            latency_ms=15,
+            prompt_tokens=20,
+            completion_tokens=5,
+            total_tokens=25,
+            estimated_cost_usd=0.00001,
+        )
+
+    monkeypatch.setattr("app.main.answer_with_model", fake_answer_with_model)
+    app.dependency_overrides[get_store] = lambda: store
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        ai_data_dir=tmp_path,
+        deepseek_api_key="sk-test",
+    )
+
+    try:
+        client = TestClient(app)
+        upload = client.post(
+            "/documents",
+            files={
+                "file": (
+                    "rag.md",
+                    b"Grounded answers require source citations and original text.",
+                    "text/markdown",
+                )
+            },
+        )
+        assert upload.status_code == 200
+        document_id = upload.json()["id"]
+
+        first_answer = client.post(
+            f"/documents/{document_id}/ask",
+            json={"question": "What requires source citations?"},
+        )
+        second_answer = client.post(
+            f"/documents/{document_id}/ask",
+            json={"question": "What requires source citations?"},
+        )
+        logs = client.get("/llm/logs")
+
+        assert first_answer.status_code == 200
+        assert second_answer.status_code == 200
+        assert first_answer.json()["cache_hit"] is False
+        assert second_answer.json()["cache_hit"] is True
+        assert first_answer.json()["answer"] == second_answer.json()["answer"]
+        assert call_count == 1
+        assert logs.status_code == 200
+        assert logs.json()[0]["cache_hit"] is True
+        assert logs.json()[1]["total_tokens"] == 25
     finally:
         app.dependency_overrides.clear()
 

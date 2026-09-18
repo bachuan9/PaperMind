@@ -35,11 +35,23 @@ ANSWER_STRUCTURE = (
 
 
 @dataclass(frozen=True)
+class TokenUsage:
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    estimated_cost_usd: float = 0.0
+
+
+@dataclass(frozen=True)
 class ModelAnswerResult:
     answer: str | None
     status: str
     latency_ms: int
     error: str | None = None
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    estimated_cost_usd: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -48,6 +60,10 @@ class ModelInsightResult:
     status: str
     latency_ms: int
     error: str | None = None
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    estimated_cost_usd: float = 0.0
 
 
 class ModelStreamError(Exception):
@@ -95,10 +111,20 @@ async def answer_with_model(
             payload=payload,
         )
         answer = data["choices"][0]["message"]["content"].strip()
+        usage = token_usage_from_response(
+            data=data,
+            settings=settings,
+            payload=payload,
+            completion_text=answer,
+        )
         return ModelAnswerResult(
             answer=answer,
             status="success",
             latency_ms=elapsed_ms(started),
+            prompt_tokens=usage.prompt_tokens,
+            completion_tokens=usage.completion_tokens,
+            total_tokens=usage.total_tokens,
+            estimated_cost_usd=usage.estimated_cost_usd,
         )
     except httpx.HTTPStatusError as error:
         return ModelAnswerResult(
@@ -161,10 +187,20 @@ async def generate_insights_with_model(
         )
         content = data["choices"][0]["message"]["content"]
         insights = parse_model_insights(content)
+        usage = token_usage_from_response(
+            data=data,
+            settings=settings,
+            payload=payload,
+            completion_text=content,
+        )
         return ModelInsightResult(
             insights=insights,
             status="success",
             latency_ms=elapsed_ms(started),
+            prompt_tokens=usage.prompt_tokens,
+            completion_tokens=usage.completion_tokens,
+            total_tokens=usage.total_tokens,
+            estimated_cost_usd=usage.estimated_cost_usd,
         )
     except httpx.HTTPStatusError as error:
         return ModelInsightResult(
@@ -312,6 +348,116 @@ def should_retry_status(status_code: int) -> bool:
 
 def stream_timeout(settings: Settings) -> httpx.Timeout:
     return httpx.Timeout(settings.llm_timeout_seconds, read=None)
+
+
+def estimate_chat_token_usage(
+    *,
+    settings: Settings,
+    question: str,
+    citations: list[Citation],
+    answer: str,
+    history: list[ConversationMessage] | None = None,
+) -> TokenUsage:
+    payload_text = messages_to_text(
+        build_messages(
+            question=question,
+            citations=citations,
+            history=history or [],
+        )
+    )
+    return token_usage_from_texts(
+        settings=settings,
+        prompt_text=payload_text,
+        completion_text=answer,
+    )
+
+
+def token_usage_from_response(
+    *,
+    data: dict,
+    settings: Settings,
+    payload: dict,
+    completion_text: str,
+) -> TokenUsage:
+    raw_usage = data.get("usage") or {}
+    prompt_tokens = coerce_token_count(raw_usage.get("prompt_tokens"))
+    completion_tokens = coerce_token_count(raw_usage.get("completion_tokens"))
+    total_tokens = coerce_token_count(raw_usage.get("total_tokens"))
+
+    if prompt_tokens == 0:
+        prompt_tokens = estimate_tokens(messages_to_text(payload.get("messages", [])))
+    if completion_tokens == 0 and completion_text:
+        completion_tokens = estimate_tokens(completion_text)
+    if total_tokens == 0:
+        total_tokens = prompt_tokens + completion_tokens
+
+    return build_token_usage(
+        settings=settings,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        total_tokens=total_tokens,
+    )
+
+
+def token_usage_from_texts(
+    *,
+    settings: Settings,
+    prompt_text: str,
+    completion_text: str,
+) -> TokenUsage:
+    prompt_tokens = estimate_tokens(prompt_text)
+    completion_tokens = estimate_tokens(completion_text)
+    return build_token_usage(
+        settings=settings,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        total_tokens=prompt_tokens + completion_tokens,
+    )
+
+
+def build_token_usage(
+    *,
+    settings: Settings,
+    prompt_tokens: int,
+    completion_tokens: int,
+    total_tokens: int,
+) -> TokenUsage:
+    cost = (
+        prompt_tokens * settings.llm_input_price_per_1m_tokens
+        + completion_tokens * settings.llm_output_price_per_1m_tokens
+    ) / 1_000_000
+    return TokenUsage(
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        total_tokens=total_tokens,
+        estimated_cost_usd=round(cost, 8),
+    )
+
+
+def coerce_token_count(value: object) -> int:
+    if isinstance(value, int):
+        return max(value, 0)
+    if isinstance(value, float):
+        return max(int(value), 0)
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return 0
+
+
+def estimate_tokens(text: str) -> int:
+    compact_text = text.strip()
+    if not compact_text:
+        return 0
+    return max(1, (len(compact_text) + 2) // 3)
+
+
+def messages_to_text(messages: list[dict]) -> str:
+    parts: list[str] = []
+    for message in messages:
+        content = message.get("content", "")
+        if isinstance(content, str):
+            parts.append(content)
+    return "\n".join(parts)
 
 
 def build_messages(

@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     llm_model: str = "deepseek-ai/DeepSeek-V4-Flash"
     llm_timeout_seconds: float = 30.0
     llm_max_retries: int = 2
+    llm_input_price_per_1m_tokens: float = 0.0
+    llm_output_price_per_1m_tokens: float = 0.0
 
     model_config = SettingsConfigDict(
         env_file=".env",

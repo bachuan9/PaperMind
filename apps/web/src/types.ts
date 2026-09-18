@@ -41,6 +41,7 @@ export type AskResponse = {
   provider: string;
   model?: string | null;
   fallback_reason?: string | null;
+  cache_hit: boolean;
 };
 
 export type ConversationSummary = {
@@ -106,6 +107,11 @@ export type LlmCallLog = {
   latency_ms: number;
   citation_count: number;
   error?: string | null;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  estimated_cost_usd: number;
+  cache_hit: boolean;
 };
 
 export type AskStreamEvent =
@@ -117,6 +123,7 @@ export type AskStreamEvent =
       model?: string | null;
       fallback_reason?: string | null;
       citations: Citation[];
+      cache_hit?: boolean;
     }
   | {
       type: "token";

@@ -119,6 +119,8 @@ DEEPSEEK_API_KEY=
 LLM_MODEL=deepseek-ai/DeepSeek-V4-Flash
 LLM_TIMEOUT_SECONDS=30
 LLM_MAX_RETRIES=2
+LLM_INPUT_PRICE_PER_1M_TOKENS=0
+LLM_OUTPUT_PRICE_PER_1M_TOKENS=0
 ```
 
 如果暂时没有模型 Key，可以保持 `DEEPSEEK_API_KEY` 为空。系统会自动使用抽取式回答兜底，仍然可以演示上传、解析、检索和引用展示。
@@ -185,3 +187,9 @@ samples/rag-notes.md
 - 外部向量数据库和可替换 Embedding 模型
 - 文档处理异步队列
 - 模型调用成本统计
+## 阶段六工程化进展
+
+- 文档上传增加内容哈希校验，重复上传同一文件时直接返回已有文档，避免重复解析和向量化。
+- 问答增加结果缓存，相同文档下的独立相同问题会命中缓存，并继续写入当前对话历史。
+- 模型调用日志增加 Token 用量、估算费用和缓存命中标记，便于排查调用成本。
+- 费用估算由 `LLM_INPUT_PRICE_PER_1M_TOKENS` 和 `LLM_OUTPUT_PRICE_PER_1M_TOKENS` 控制，默认值为 0。

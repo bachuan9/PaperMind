@@ -28,6 +28,7 @@ class DocumentSummary(BaseModel):
     chunk_count: int = 0
     summary: str = ""
     error: str | None = None
+    content_hash: str | None = None
 
 
 class DocumentDetail(DocumentSummary):
@@ -54,6 +55,24 @@ class AskResponse(BaseModel):
     provider: str = "local"
     model: str | None = None
     fallback_reason: str | None = None
+    cache_hit: bool = False
+
+
+class AskCacheEntry(BaseModel):
+    cache_key: str
+    document_id: str
+    question: str
+    answer: str
+    citations: list[Citation] = Field(default_factory=list)
+    mode: Literal["model", "extractive"]
+    provider: str = "local"
+    model: str | None = None
+    fallback_reason: str | None = None
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    estimated_cost_usd: float = 0.0
+    created_at: datetime
 
 
 class Conversation(BaseModel):
@@ -134,3 +153,8 @@ class LlmCallLog(BaseModel):
     latency_ms: int
     citation_count: int
     error: str | None = None
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    estimated_cost_usd: float = 0.0
+    cache_hit: bool = False

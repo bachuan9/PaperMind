@@ -1,3 +1,4 @@
+import hashlib
 import json
 import threading
 from datetime import datetime, timezone
@@ -5,6 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from .models import (
+    AskCacheEntry,
     Conversation,
     ConversationMessage,
     ConversationSummary,
@@ -45,6 +47,13 @@ class JsonStore:
             for chunk in data.get("chunks", {}).get(document_id, [])
         ]
         return DocumentDetail(**raw_document, chunks=chunks)
+
+    def find_document_by_hash(self, content_hash: str) -> DocumentSummary | None:
+        data = self._read()
+        for raw_document in data.get("documents", {}).values():
+            if raw_document.get("content_hash") == content_hash:
+                return DocumentSummary.model_validate(raw_document)
+        return None
 
     def save_document(
         self,
@@ -90,6 +99,9 @@ class JsonStore:
             data.get("chunks", {}).pop(document_id, None)
             data.get("vectors", {}).pop(document_id, None)
             data.get("notes", {}).pop(document_id, None)
+            for cache_key, cache_entry in list(data.get("ask_cache", {}).items()):
+                if cache_entry.get("document_id") == document_id:
+                    data["ask_cache"].pop(cache_key, None)
             conversation_ids = [
                 conversation_id
                 for conversation_id, conversation in data.get("conversations", {}).items()
@@ -123,6 +135,27 @@ class JsonStore:
             for item in data.get("llm_logs", [])[:limit]
         ]
         return logs
+
+    def get_ask_cache(
+        self,
+        document_id: str,
+        question: str,
+    ) -> AskCacheEntry | None:
+        data = self._read()
+        cache_key = build_ask_cache_key(document_id, question)
+        raw_entry = data.get("ask_cache", {}).get(cache_key)
+        if raw_entry is None:
+            return None
+        return AskCacheEntry.model_validate(raw_entry)
+
+    def save_ask_cache(self, entry: AskCacheEntry) -> AskCacheEntry:
+        with self._lock:
+            data = self._read()
+            data.setdefault("ask_cache", {})[entry.cache_key] = entry.model_dump(
+                mode="json"
+            )
+            self._write(data)
+        return entry
 
     def create_conversation(self, document_id: str, title: str) -> Conversation:
         conversation = Conversation(
@@ -230,11 +263,18 @@ def now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def build_ask_cache_key(document_id: str, question: str) -> str:
+    normalized_question = " ".join(question.split()).casefold()
+    payload = f"{document_id}:{normalized_question}".encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
 def empty_store() -> dict:
     return {
         "documents": {},
         "chunks": {},
         "vectors": {},
+        "ask_cache": {},
         "llm_logs": [],
         "conversations": {},
         "messages": {},

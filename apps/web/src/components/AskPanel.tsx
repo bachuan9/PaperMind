@@ -90,7 +90,8 @@ export function AskPanel({ documentId }: { documentId: string }) {
               mode: event.mode,
               provider: event.provider,
               model: event.model,
-              fallback_reason: event.fallback_reason
+              fallback_reason: event.fallback_reason,
+              cache_hit: event.cache_hit ?? false
             });
             return;
           }

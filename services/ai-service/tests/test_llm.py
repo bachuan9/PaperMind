@@ -7,6 +7,7 @@ from app.llm import (
     parse_model_insights,
     parse_stream_token,
     prepare_history_messages,
+    token_usage_from_response,
 )
 from app.models import Citation, ConversationMessage, DocumentChunk
 from app.settings import Settings
@@ -21,6 +22,29 @@ def test_parse_stream_token_reads_delta_content() -> None:
 
 def test_parse_stream_token_ignores_invalid_payload() -> None:
     assert parse_stream_token("{}") == ""
+
+
+def test_token_usage_from_response_reads_provider_usage() -> None:
+    usage = token_usage_from_response(
+        data={
+            "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 40,
+                "total_tokens": 140,
+            }
+        },
+        settings=Settings(
+            llm_input_price_per_1m_tokens=2,
+            llm_output_price_per_1m_tokens=4,
+        ),
+        payload={"messages": [{"content": "hello"}]},
+        completion_text="world",
+    )
+
+    assert usage.prompt_tokens == 100
+    assert usage.completion_tokens == 40
+    assert usage.total_tokens == 140
+    assert usage.estimated_cost_usd == 0.00036
 
 
 def test_build_chat_request_requires_fixed_answer_structure() -> None:
