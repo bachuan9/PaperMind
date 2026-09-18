@@ -36,10 +36,32 @@ export type Citation = {
 export type AskResponse = {
   answer: string;
   citations: Citation[];
+  conversation_id: string;
   mode: "model" | "extractive";
   provider: string;
   model?: string | null;
   fallback_reason?: string | null;
+};
+
+export type ConversationSummary = {
+  id: string;
+  document_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+};
+
+export type ConversationMessage = {
+  id: string;
+  conversation_id: string;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+  citations: Citation[];
+  mode?: "model" | "extractive" | null;
+  provider?: string | null;
+  model?: string | null;
 };
 
 export type InsightSection = {
@@ -79,6 +101,7 @@ export type LlmCallLog = {
 export type AskStreamEvent =
   | {
       type: "meta";
+      conversation_id: string;
       mode: "model" | "extractive";
       provider: string;
       model?: string | null;

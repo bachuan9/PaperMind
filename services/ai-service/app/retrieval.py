@@ -2,6 +2,7 @@ import math
 import re
 from collections import Counter
 
+from .embeddings import cosine_similarity, embed_text
 from .models import Citation, DocumentChunk
 
 
@@ -21,16 +22,30 @@ VAGUE_CONTEXT_PATTERNS = (
 )
 
 
-def retrieve(question: str, chunks: list[DocumentChunk], limit: int = 4) -> list[Citation]:
+def retrieve(
+    question: str,
+    chunks: list[DocumentChunk],
+    limit: int = 4,
+    vectors: dict[str, list[float]] | None = None,
+) -> list[Citation]:
     question_tokens = tokenize(question)
     if not question_tokens:
         return fallback_context(question, chunks, limit)
 
+    query_vector = embed_text(question)
+    stored_vectors = vectors or {}
     scored: list[Citation] = []
     for chunk in chunks:
-        score = score_chunk(question_tokens, tokenize(chunk.text))
-        if score <= 0:
+        lexical_score = score_chunk(question_tokens, tokenize(chunk.text))
+        vector = stored_vectors.get(chunk.id) or embed_text(chunk.text)
+        vector_score = cosine_similarity(query_vector, vector)
+        if lexical_score <= 0 and vector_score <= 0:
             continue
+        score = round(
+            (max(vector_score, 0.0) * 0.7)
+            + (min(lexical_score / 10, 1.0) * 0.3),
+            4,
+        )
         scored.append(
             Citation(
                 chunk_id=chunk.id,

@@ -9,10 +9,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from .analyzer import build_document_insights
+from .embeddings import embed_text
 from .llm import ModelStreamError, answer_with_model, elapsed_ms, stream_answer_with_model
 from .models import (
     AskRequest,
     AskResponse,
+    Conversation,
+    ConversationMessage,
+    ConversationSummary,
     DocumentChunk,
     DocumentDetail,
     DocumentInsightResponse,
@@ -99,6 +103,7 @@ async def create_document(
             )
             for index, (page_number, text) in enumerate(raw_chunks)
         ]
+        vectors = {chunk.id: embed_text(chunk.text) for chunk in chunks}
         document = DocumentSummary(
             id=document_id,
             title=title,
@@ -123,8 +128,9 @@ async def create_document(
             error=str(error),
         )
         chunks = []
+        vectors = {}
 
-    return store.save_document(document, chunks)
+    return store.save_document(document, chunks, vectors)
 
 
 @app.get("/documents/{document_id}", response_model=DocumentDetail)
@@ -162,6 +168,34 @@ def delete_document(
     return {"ok": True}
 
 
+@app.get(
+    "/documents/{document_id}/conversations",
+    response_model=list[ConversationSummary],
+)
+def list_document_conversations(
+    document_id: str,
+    store: JsonStore = Depends(get_store),
+) -> list[ConversationSummary]:
+    document = store.get_document(document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    return store.list_conversations(document_id)
+
+
+@app.get(
+    "/conversations/{conversation_id}/messages",
+    response_model=list[ConversationMessage],
+)
+def list_conversation_messages(
+    conversation_id: str,
+    store: JsonStore = Depends(get_store),
+) -> list[ConversationMessage]:
+    conversation = store.get_conversation(conversation_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    return store.list_messages(conversation_id)
+
+
 @app.post("/documents/{document_id}/ask", response_model=AskResponse)
 async def ask_document(
     document_id: str,
@@ -175,13 +209,34 @@ async def ask_document(
     if document.status != "ready":
         raise HTTPException(status_code=409, detail="文档尚未解析完成")
 
-    citations = retrieve(request.question, document.chunks)
+    conversation, history = prepare_conversation(
+        store=store,
+        document_id=document_id,
+        question=request.question,
+        conversation_id=request.conversation_id,
+    )
+    citations = retrieve(
+        request.question,
+        document.chunks,
+        vectors=load_document_vectors(store, document_id, document.chunks),
+    )
     model_result = await answer_with_model(
         settings=settings,
         question=request.question,
         citations=citations,
+        history=history,
     )
     if model_result.answer:
+        store.append_message(
+            build_assistant_message(
+                conversation_id=conversation.id,
+                content=model_result.answer,
+                citations=citations,
+                mode="model",
+                provider="SiliconFlow",
+                model=settings.llm_model,
+            )
+        )
         store.append_llm_log(
             build_llm_log(
                 document_id=document_id,
@@ -197,12 +252,23 @@ async def ask_document(
         return AskResponse(
             answer=model_result.answer,
             citations=citations,
+            conversation_id=conversation.id,
             mode="model",
             provider="SiliconFlow",
             model=settings.llm_model,
         )
 
     fallback_answer = build_extractive_answer(request.question, citations)
+    store.append_message(
+        build_assistant_message(
+            conversation_id=conversation.id,
+            content=fallback_answer,
+            citations=citations,
+            mode="extractive",
+            provider="local",
+            model=None,
+        )
+    )
     store.append_llm_log(
         build_llm_log(
             document_id=document_id,
@@ -218,6 +284,7 @@ async def ask_document(
     return AskResponse(
         answer=fallback_answer,
         citations=citations,
+        conversation_id=conversation.id,
         mode="extractive",
         provider="local",
         model=None,
@@ -238,13 +305,25 @@ async def ask_document_stream(
     if document.status != "ready":
         raise HTTPException(status_code=409, detail="文档尚未解析完成")
 
-    citations = retrieve(request.question, document.chunks)
+    conversation, history = prepare_conversation(
+        store=store,
+        document_id=document_id,
+        question=request.question,
+        conversation_id=request.conversation_id,
+    )
+    citations = retrieve(
+        request.question,
+        document.chunks,
+        vectors=load_document_vectors(store, document_id, document.chunks),
+    )
 
     return StreamingResponse(
         stream_answer_events(
             document_id=document_id,
             question=request.question,
             citations=citations,
+            conversation_id=conversation.id,
+            history=history,
             settings=settings,
             store=store,
         ),
@@ -278,11 +357,82 @@ def build_llm_log(
     )
 
 
+def load_document_vectors(
+    store: JsonStore,
+    document_id: str,
+    chunks: list[DocumentChunk],
+) -> dict[str, list[float]]:
+    vectors = store.get_document_vectors(document_id)
+    missing_vectors = {
+        chunk.id: embed_text(chunk.text)
+        for chunk in chunks
+        if chunk.id not in vectors
+    }
+    if missing_vectors:
+        vectors.update(missing_vectors)
+        store.save_document_vectors(document_id, vectors)
+    return vectors
+
+
+def prepare_conversation(
+    *,
+    store: JsonStore,
+    document_id: str,
+    question: str,
+    conversation_id: str | None,
+) -> tuple[Conversation, list[ConversationMessage]]:
+    if conversation_id:
+        conversation = store.get_conversation(conversation_id)
+        if conversation is None:
+            raise HTTPException(status_code=404, detail="会话不存在")
+        if conversation.document_id != document_id:
+            raise HTTPException(status_code=400, detail="会话不属于当前文档")
+    else:
+        title = " ".join(question.split()).strip()[:80] or "新对话"
+        conversation = store.create_conversation(document_id, title)
+
+    history = store.list_messages(conversation.id)
+    store.append_message(
+        ConversationMessage(
+            id=str(uuid4()),
+            conversation_id=conversation.id,
+            role="user",
+            content=question,
+            created_at=now_utc(),
+        )
+    )
+    return conversation, history
+
+
+def build_assistant_message(
+    *,
+    conversation_id: str,
+    content: str,
+    citations: list,
+    mode: str,
+    provider: str,
+    model: str | None,
+) -> ConversationMessage:
+    return ConversationMessage(
+        id=str(uuid4()),
+        conversation_id=conversation_id,
+        role="assistant",
+        content=content,
+        created_at=now_utc(),
+        citations=citations,
+        mode=mode,
+        provider=provider,
+        model=model,
+    )
+
+
 async def stream_answer_events(
     *,
     document_id: str,
     question: str,
     citations: list,
+    conversation_id: str,
+    history: list[ConversationMessage],
     settings: Settings,
     store: JsonStore,
 ) -> AsyncIterator[str]:
@@ -293,6 +443,16 @@ async def stream_answer_events(
             else "\u6ca1\u6709\u53ef\u7528\u5f15\u7528\u7247\u6bb5"
         )
         fallback_answer = build_extractive_answer(question, citations)
+        store.append_message(
+            build_assistant_message(
+                conversation_id=conversation_id,
+                content=fallback_answer,
+                citations=citations,
+                mode="extractive",
+                provider="local",
+                model=None,
+            )
+        )
         store.append_llm_log(
             build_llm_log(
                 document_id=document_id,
@@ -306,6 +466,7 @@ async def stream_answer_events(
             )
         )
         async for event in stream_fallback_answer(
+            conversation_id=conversation_id,
             answer=fallback_answer,
             citations=citations,
             reason=reason,
@@ -318,6 +479,7 @@ async def stream_answer_events(
     yield stream_event(
         "meta",
         {
+            "conversation_id": conversation_id,
             "mode": "model",
             "provider": "SiliconFlow",
             "model": settings.llm_model,
@@ -330,9 +492,21 @@ async def stream_answer_events(
             settings=settings,
             question=question,
             citations=citations,
+            history=history,
         ):
             chunks.append(token)
             yield stream_event("token", {"token": token})
+        answer = "".join(chunks)
+        store.append_message(
+            build_assistant_message(
+                conversation_id=conversation_id,
+                content=answer,
+                citations=citations,
+                mode="model",
+                provider="SiliconFlow",
+                model=settings.llm_model,
+            )
+        )
         store.append_llm_log(
             build_llm_log(
                 document_id=document_id,
@@ -345,9 +519,19 @@ async def stream_answer_events(
                 error=None,
             )
         )
-        yield stream_event("done", {"answer": "".join(chunks)})
+        yield stream_event("done", {"answer": answer})
     except ModelStreamError as error:
         fallback_answer = build_extractive_answer(question, citations)
+        store.append_message(
+            build_assistant_message(
+                conversation_id=conversation_id,
+                content=fallback_answer,
+                citations=citations,
+                mode="extractive",
+                provider="local",
+                model=None,
+            )
+        )
         store.append_llm_log(
             build_llm_log(
                 document_id=document_id,
@@ -361,6 +545,7 @@ async def stream_answer_events(
             )
         )
         async for event in stream_fallback_answer(
+            conversation_id=conversation_id,
             answer=fallback_answer,
             citations=citations,
             reason=str(error),
@@ -370,6 +555,7 @@ async def stream_answer_events(
 
 async def stream_fallback_answer(
     *,
+    conversation_id: str,
     answer: str,
     citations: list,
     reason: str,
@@ -377,6 +563,7 @@ async def stream_fallback_answer(
     yield stream_event(
         "meta",
         {
+            "conversation_id": conversation_id,
             "mode": "extractive",
             "provider": "local",
             "model": None,

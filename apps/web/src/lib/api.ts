@@ -1,6 +1,8 @@
 import type {
   AskResponse,
   AskStreamEvent,
+  ConversationMessage,
+  ConversationSummary,
   DocumentDetail,
   DocumentInsightResponse,
   DocumentSummary,
@@ -53,6 +55,24 @@ export async function getDocumentInsights(id: string): Promise<DocumentInsightRe
   );
 }
 
+export async function listConversations(id: string): Promise<ConversationSummary[]> {
+  return parseResponse(
+    await fetch(`${API_BASE}/documents/${encodeURIComponent(id)}/conversations`, {
+      cache: "no-store"
+    })
+  );
+}
+
+export async function listConversationMessages(
+  id: string
+): Promise<ConversationMessage[]> {
+  return parseResponse(
+    await fetch(`${API_BASE}/conversations/${encodeURIComponent(id)}/messages`, {
+      cache: "no-store"
+    })
+  );
+}
+
 export async function uploadDocument(file: File): Promise<DocumentSummary> {
   const formData = new FormData();
   formData.append("file", file);
@@ -75,7 +95,8 @@ export async function deleteDocument(id: string): Promise<{ ok: boolean }> {
 
 export async function askDocument(
   id: string,
-  question: string
+  question: string,
+  conversationId: string | null = null
 ): Promise<AskResponse> {
   return parseResponse(
     await fetch(`${API_BASE}/documents/${id}/ask`, {
@@ -83,7 +104,10 @@ export async function askDocument(
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ question })
+      body: JSON.stringify({
+        question,
+        conversation_id: conversationId
+      })
     })
   );
 }
@@ -91,6 +115,7 @@ export async function askDocument(
 export async function streamAskDocument(
   id: string,
   question: string,
+  conversationId: string | null,
   onEvent: (event: AskStreamEvent) => void
 ): Promise<void> {
   const response = await fetch(`${API_BASE}/documents/${id}/ask/stream`, {
@@ -98,7 +123,10 @@ export async function streamAskDocument(
     headers: {
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ question })
+    body: JSON.stringify({
+      question,
+      conversation_id: conversationId
+    })
   });
 
   if (!response.ok) {

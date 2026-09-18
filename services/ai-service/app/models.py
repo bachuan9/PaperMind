@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 
 DocumentStatus = Literal["ready", "failed", "processing"]
+MessageRole = Literal["user", "assistant"]
 
 
 class DocumentChunk(BaseModel):
@@ -35,6 +36,7 @@ class DocumentDetail(DocumentSummary):
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=1200)
+    conversation_id: str | None = Field(default=None, max_length=80)
 
 
 class Citation(BaseModel):
@@ -47,10 +49,35 @@ class Citation(BaseModel):
 class AskResponse(BaseModel):
     answer: str
     citations: list[Citation]
+    conversation_id: str
     mode: Literal["model", "extractive"]
     provider: str = "local"
     model: str | None = None
     fallback_reason: str | None = None
+
+
+class Conversation(BaseModel):
+    id: str
+    document_id: str
+    title: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class ConversationSummary(Conversation):
+    message_count: int = 0
+
+
+class ConversationMessage(BaseModel):
+    id: str
+    conversation_id: str
+    role: MessageRole
+    content: str
+    created_at: datetime
+    citations: list[Citation] = Field(default_factory=list)
+    mode: Literal["model", "extractive"] | None = None
+    provider: str | None = None
+    model: str | None = None
 
 
 class InsightSection(BaseModel):

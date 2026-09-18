@@ -5,7 +5,7 @@ from typing import AsyncIterator
 
 import httpx
 
-from .models import Citation
+from .models import Citation, ConversationMessage
 from .settings import Settings
 
 
@@ -28,6 +28,7 @@ async def answer_with_model(
     settings: Settings,
     question: str,
     citations: list[Citation],
+    history: list[ConversationMessage] | None = None,
 ) -> ModelAnswerResult:
     if not settings.deepseek_api_key:
         return ModelAnswerResult(
@@ -49,6 +50,7 @@ async def answer_with_model(
         question=question,
         citations=citations,
         stream=False,
+        history=history,
     )
 
     started = perf_counter()
@@ -91,6 +93,7 @@ async def stream_answer_with_model(
     settings: Settings,
     question: str,
     citations: list[Citation],
+    history: list[ConversationMessage] | None = None,
 ) -> AsyncIterator[str]:
     if not settings.deepseek_api_key:
         raise ModelStreamError("\u672a\u914d\u7f6e DEEPSEEK_API_KEY")
@@ -102,6 +105,7 @@ async def stream_answer_with_model(
         question=question,
         citations=citations,
         stream=True,
+        history=history,
     )
     started = perf_counter()
 
@@ -141,6 +145,7 @@ def build_chat_request(
     question: str,
     citations: list[Citation],
     stream: bool,
+    history: list[ConversationMessage] | None = None,
 ) -> tuple[str, dict[str, str], dict]:
     context = "\n\n".join(
         f"[\u5f15\u7528 {index + 1} | \u9875\u7801: {citation.page_number or '\u6b63\u6587'}]\n{citation.text}"
@@ -156,15 +161,24 @@ def build_chat_request(
         f"\u7528\u6237\u95ee\u9898\uff1a{question}\n\n"
         f"\u53ef\u7528\u5f15\u7528\uff1a\n{context}"
     )
+    messages = [
+        {
+            "role": "system",
+            "content": "\u4f60\u4e25\u8c28\u3001\u7b80\u6d01\uff0c\u4f18\u5148\u4fdd\u8bc1\u56de\u7b54\u53ef\u6eaf\u6e90\u3002",
+        }
+    ]
+    for message in (history or [])[-8:]:
+        messages.append(
+            {
+                "role": message.role,
+                "content": message.content[:4000],
+            }
+        )
+    messages.append({"role": "user", "content": prompt})
+
     payload = {
         "model": settings.llm_model,
-        "messages": [
-            {
-                "role": "system",
-                "content": "\u4f60\u4e25\u8c28\u3001\u7b80\u6d01\uff0c\u4f18\u5148\u4fdd\u8bc1\u56de\u7b54\u53ef\u6eaf\u6e90\u3002",
-            },
-            {"role": "user", "content": prompt},
-        ],
+        "messages": messages,
         "temperature": 0.2,
         "stream": stream,
     }

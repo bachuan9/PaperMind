@@ -6,8 +6,10 @@ PaperMind 是一个面向简历项目和作品集展示的 AI 论文/文档阅�
 
 - 上传 Markdown、TXT、PDF 文档
 - 解析文档正文并切分为可检索片段
+- 为文档片段生成本地向量索引，问答检索结合关键词和向量相似度
 - 展示文档元数据、摘要和原文片段
 - 针对单篇文档进行问答
+- 支持单篇文档的多轮对话历史，历史消息会作为模型上下文传入
 - 返回带引用片段的回答
 - 生成文档洞察，包括摘要、关键词、提纲和建议追问
 - 未配置模型 API Key 时，自动使用基于原文片段的抽取式回答兜底
@@ -24,6 +26,7 @@ PaperMind 是一个面向简历项目和作品集展示的 AI 论文/文档阅�
 - 后端：FastAPI、Python
 - 存储：本地 JSON 文件，适合第一版 MVP 演示
 - 文档解析：pypdf、文本解析器
+- 检索：本地哈希向量索引、关键词匹配和余弦相似度
 - AI 接入：SiliconFlow DeepSeek Chat Completions API
 - 文档洞察：本地启发式分析，后续可升级为模型结构化输出
 
@@ -160,12 +163,12 @@ samples/rag-notes.md
 ## 简历写法参考
 
 ```text
-独立开发 PaperMind AI 文档阅读平台，基于 Next.js、TypeScript、FastAPI 和 Python 实现文档上传、文本解析、分块检索、基于引用的问答、文档洞察、流式回答和 Markdown 笔记导出。封装 SiliconFlow DeepSeek 模型调用层，并在未配置模型时提供基于原文片段的兜底回答，提升系统可演示性和稳定性。
+独立开发 PaperMind AI 文档阅读平台，基于 Next.js、TypeScript、FastAPI 和 Python 实现文档上传、文本解析、本地向量索引、混合检索、基于引用的多轮问答、文档洞察、流式回答和 Markdown 笔记导出。封装 SiliconFlow DeepSeek 模型调用层，并在未配置模型时提供基于原文片段的兜底回答，提升系统可演示性和稳定性。
 ```
 
 后续可以继续扩展为：
 
 - SQLite/PostgreSQL 持久化存储
-- 向量数据库和语义检索
+- 外部向量数据库和可替换 Embedding 模型
 - 文档处理异步队列
 - 模型调用成本统计
