@@ -88,22 +88,31 @@ async def answer_with_model(
 
     started = perf_counter()
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(url, headers=headers, json=payload)
-            response.raise_for_status()
-            data = response.json()
-            answer = data["choices"][0]["message"]["content"].strip()
-            return ModelAnswerResult(
-                answer=answer,
-                status="success",
-                latency_ms=elapsed_ms(started),
-            )
+        data = await post_json_with_retries(
+            settings=settings,
+            url=url,
+            headers=headers,
+            payload=payload,
+        )
+        answer = data["choices"][0]["message"]["content"].strip()
+        return ModelAnswerResult(
+            answer=answer,
+            status="success",
+            latency_ms=elapsed_ms(started),
+        )
     except httpx.HTTPStatusError as error:
         return ModelAnswerResult(
             answer=None,
             status="failed",
             latency_ms=elapsed_ms(started),
             error=f"\u6a21\u578b\u63a5\u53e3\u8fd4\u56de {error.response.status_code}",
+        )
+    except httpx.TimeoutException:
+        return ModelAnswerResult(
+            answer=None,
+            status="failed",
+            latency_ms=elapsed_ms(started),
+            error="\u6a21\u578b\u63a5\u53e3\u8bf7\u6c42\u8d85\u65f6",
         )
     except httpx.RequestError:
         return ModelAnswerResult(
@@ -144,23 +153,32 @@ async def generate_insights_with_model(
     url, headers, payload = build_insight_request(settings=settings, chunks=chunks)
     started = perf_counter()
     try:
-        async with httpx.AsyncClient(timeout=40) as client:
-            response = await client.post(url, headers=headers, json=payload)
-            response.raise_for_status()
-            data = response.json()
-            content = data["choices"][0]["message"]["content"]
-            insights = parse_model_insights(content)
-            return ModelInsightResult(
-                insights=insights,
-                status="success",
-                latency_ms=elapsed_ms(started),
-            )
+        data = await post_json_with_retries(
+            settings=settings,
+            url=url,
+            headers=headers,
+            payload=payload,
+        )
+        content = data["choices"][0]["message"]["content"]
+        insights = parse_model_insights(content)
+        return ModelInsightResult(
+            insights=insights,
+            status="success",
+            latency_ms=elapsed_ms(started),
+        )
     except httpx.HTTPStatusError as error:
         return ModelInsightResult(
             insights=None,
             status="failed",
             latency_ms=elapsed_ms(started),
             error=f"\u6a21\u578b\u63a5\u53e3\u8fd4\u56de {error.response.status_code}",
+        )
+    except httpx.TimeoutException:
+        return ModelInsightResult(
+            insights=None,
+            status="failed",
+            latency_ms=elapsed_ms(started),
+            error="\u6a21\u578b\u63a5\u53e3\u8bf7\u6c42\u8d85\u65f6",
         )
     except httpx.RequestError:
         return ModelInsightResult(
@@ -200,7 +218,7 @@ async def stream_answer_with_model(
     started = perf_counter()
 
     try:
-        async with httpx.AsyncClient(timeout=None) as client:
+        async with httpx.AsyncClient(timeout=stream_timeout(settings)) as client:
             async with client.stream(
                 "POST",
                 url,
@@ -253,6 +271,47 @@ def build_chat_request(
         "Content-Type": "application/json",
     }
     return url, headers, payload
+
+
+async def post_json_with_retries(
+    *,
+    settings: Settings,
+    url: str,
+    headers: dict[str, str],
+    payload: dict,
+) -> dict:
+    attempts = max(settings.llm_max_retries, 0) + 1
+    last_request_error: httpx.RequestError | None = None
+    last_status_error: httpx.HTTPStatusError | None = None
+
+    async with httpx.AsyncClient(timeout=settings.llm_timeout_seconds) as client:
+        for attempt in range(attempts):
+            try:
+                response = await client.post(url, headers=headers, json=payload)
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as error:
+                last_status_error = error
+                if not should_retry_status(error.response.status_code) or attempt == attempts - 1:
+                    raise
+            except httpx.RequestError as error:
+                last_request_error = error
+                if attempt == attempts - 1:
+                    raise
+
+    if last_status_error is not None:
+        raise last_status_error
+    if last_request_error is not None:
+        raise last_request_error
+    raise RuntimeError("model request did not complete")
+
+
+def should_retry_status(status_code: int) -> bool:
+    return status_code == 429 or status_code >= 500
+
+
+def stream_timeout(settings: Settings) -> httpx.Timeout:
+    return httpx.Timeout(settings.llm_timeout_seconds, read=None)
 
 
 def build_messages(

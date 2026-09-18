@@ -7,9 +7,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     ai_data_dir: Path = Path("./data")
     ai_allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    ai_max_upload_mb: int = 25
+    ai_rate_limit_per_minute: int = 120
+    ai_request_log_enabled: bool = True
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.siliconflow.cn/v1"
     llm_model: str = "deepseek-ai/DeepSeek-V4-Flash"
+    llm_timeout_seconds: float = 30.0
+    llm_max_retries: int = 2
 
     model_config = SettingsConfigDict(
         env_file=".env",

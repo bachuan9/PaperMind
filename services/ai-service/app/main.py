@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 
 from .analyzer import build_document_insights
 from .embeddings import embed_text
+from .engineering import configure_engineering
 from .llm import (
     ModelStreamError,
     answer_with_model,
@@ -52,6 +53,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+configure_engineering(app, settings)
 
 
 @app.get("/health")
@@ -77,6 +79,7 @@ def list_documents(store: JsonStore = Depends(get_store)) -> list[DocumentSummar
 @app.post("/documents", response_model=DocumentSummary)
 async def create_document(
     file: UploadFile = File(...),
+    settings: Settings = Depends(get_settings),
     store: JsonStore = Depends(get_store),
 ) -> DocumentSummary:
     filename = file.filename or "document"
@@ -88,8 +91,12 @@ async def create_document(
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="文件内容为空")
-    if len(content) > 25 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="文件不能超过 25MB")
+    max_upload_bytes = settings.ai_max_upload_mb * 1024 * 1024
+    if len(content) > max_upload_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"文件不能超过 {settings.ai_max_upload_mb}MB",
+        )
 
     document_id = str(uuid4())
     now = now_utc()

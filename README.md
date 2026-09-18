@@ -22,6 +22,9 @@ PaperMind 是一个面向简历项目和作品集展示的 AI 论文/文档阅�
 - 展示 DeepSeek 配置状态、回答模式和模型调用失败原因
 - 记录最近的模型调用日志，便于排查模型回退原因
 - 提供调用日志页面，可查看最近调用状态、耗时、模型和错误信息
+- 后端提供统一错误返回、请求 ID、请求日志和基础限流
+- 模型请求支持超时配置和失败重试
+- 上传文件大小限制支持环境变量配置
 - 支持流式问答输出，DeepSeek 生成过程会实时显示在页面中
 - 支持一键导出 Markdown 阅读笔记，包含摘要、关键词、提纲、建议追问和关键摘录
 
@@ -107,10 +110,15 @@ AI_SERVICE_HOST=0.0.0.0
 AI_SERVICE_PORT=8000
 AI_DATA_DIR=./data
 AI_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+AI_MAX_UPLOAD_MB=25
+AI_RATE_LIMIT_PER_MINUTE=120
+AI_REQUEST_LOG_ENABLED=true
 
 DEEPSEEK_BASE_URL=https://api.siliconflow.cn/v1
 DEEPSEEK_API_KEY=
 LLM_MODEL=deepseek-ai/DeepSeek-V4-Flash
+LLM_TIMEOUT_SECONDS=30
+LLM_MAX_RETRIES=2
 ```
 
 如果暂时没有模型 Key，可以保持 `DEEPSEEK_API_KEY` 为空。系统会自动使用抽取式回答兜底，仍然可以演示上传、解析、检索和引用展示。
