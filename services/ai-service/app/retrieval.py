@@ -95,28 +95,40 @@ def is_context_question(question: str) -> bool:
 
 def build_extractive_answer(question: str, citations: list[Citation]) -> str:
     if not citations:
-        return (
-            "\u6211\u6ca1\u6709\u5728\u5f53\u524d\u6587\u6863\u4e2d\u68c0\u7d22\u5230"
-            "\u8db3\u591f\u76f8\u5173\u7684\u539f\u6587\u4f9d\u636e\u3002"
-            "\u53ef\u4ee5\u6362\u4e00\u79cd\u95ee\u6cd5\uff0c"
-            "\u6216\u786e\u8ba4\u6587\u6863\u662f\u5426\u5df2\u5b8c\u6574\u89e3\u6790\u3002"
+        return "\n".join(
+            [
+                "## \u76f4\u63a5\u56de\u7b54",
+                "\u6211\u6ca1\u6709\u5728\u5f53\u524d\u6587\u6863\u4e2d\u68c0\u7d22\u5230\u8db3\u591f\u76f8\u5173\u7684\u539f\u6587\u4f9d\u636e\u3002",
+                "",
+                "## \u6587\u6863\u4f9d\u636e",
+                "- \u65e0\u53ef\u7528\u5f15\u7528\u3002",
+                "",
+                "## \u8fb9\u754c\u548c\u4e0d\u786e\u5b9a\u6027",
+                "- \u53ef\u4ee5\u6362\u4e00\u79cd\u95ee\u6cd5\uff0c\u6216\u786e\u8ba4\u6587\u6863\u662f\u5426\u5df2\u5b8c\u6574\u89e3\u6790\u3002",
+            ]
         )
 
     if is_context_question(question):
         return build_plain_explanation(citations)
 
     lines = [
+        "## \u76f4\u63a5\u56de\u7b54",
         "\u57fa\u4e8e\u5f53\u524d\u6587\u6863\u4e2d\u6700\u76f8\u5173\u7684\u7247\u6bb5\uff0c\u53ef\u4ee5\u5148\u8fd9\u6837\u7406\u89e3\uff1a",
         "",
+        "## \u6587\u6863\u4f9d\u636e",
     ]
     for index, citation in enumerate(citations[:3], start=1):
         source = format_source(citation)
-        lines.append(f"{index}. {source} \u63d0\u5230\uff1a{trim_text(citation.text, 220)}")
+        lines.append(
+            f"- [\u5f15\u7528 {index}] {source} \u63d0\u5230\uff1a{trim_text(citation.text, 220)}"
+        )
 
     lines.extend(
         [
             "",
-            "\u5982\u679c\u4f60\u60f3\u8981\u66f4\u81ea\u7136\u7684\u89e3\u91ca\u3001\u603b\u7ed3\u6216\u63a8\u7406\uff0c\u9700\u8981\u5728 .env \u4e2d\u914d\u7f6e DEEPSEEK_API_KEY\u3002",
+            "## \u8fb9\u754c\u548c\u4e0d\u786e\u5b9a\u6027",
+            "- \u5f53\u524d\u4e3a\u672c\u5730\u62bd\u53d6\u5f0f\u56de\u7b54\uff0c\u4ec5\u57fa\u4e8e\u68c0\u7d22\u5230\u7684\u539f\u6587\u7247\u6bb5\uff0c\u4e0d\u6269\u5c55\u539f\u6587\u5916\u7684\u63a8\u65ad\u3002",
+            "- \u5982\u9700\u8981\u66f4\u81ea\u7136\u7684\u89e3\u91ca\u3001\u603b\u7ed3\u6216\u63a8\u7406\uff0c\u9700\u8981\u5728 .env \u4e2d\u914d\u7f6e DEEPSEEK_API_KEY\u3002",
         ]
     )
     return "\n".join(lines)
@@ -127,6 +139,7 @@ def build_plain_explanation(citations: list[Citation]) -> str:
     summary = points[0] if points else citations[0].text
 
     lines = [
+        "## \u76f4\u63a5\u56de\u7b54",
         f"\u7b80\u5355\u8bf4\uff0c\u8fd9\u7bc7\u6587\u6863\u4e3b\u8981\u662f\u5728\u8bf4\uff1a{trim_text(summary, 130)}",
         "",
         "\u53ef\u4ee5\u62c6\u6210\u51e0\u4e2a\u8981\u70b9\uff1a",
@@ -134,14 +147,17 @@ def build_plain_explanation(citations: list[Citation]) -> str:
     for index, point in enumerate(points[:3], start=1):
         lines.append(f"{index}. {trim_text(point, 110)}")
 
-    lines.extend(["", "\u5f15\u7528\u4f9d\u636e\uff1a"])
-    for citation in citations[:2]:
-        lines.append(f"- {format_source(citation)}\uff1a{trim_text(citation.text, 120)}")
+    lines.extend(["", "## \u6587\u6863\u4f9d\u636e"])
+    for index, citation in enumerate(citations[:2], start=1):
+        lines.append(
+            f"- [\u5f15\u7528 {index}] {format_source(citation)}\uff1a{trim_text(citation.text, 120)}"
+        )
 
     lines.extend(
         [
             "",
-            "\u5f53\u524d\u4e3a\u65e0\u6a21\u578b Key \u7684\u672c\u5730\u89e3\u91ca\u6a21\u5f0f\uff0c\u6240\u4ee5\u6211\u4f1a\u5c3d\u91cf\u57fa\u4e8e\u539f\u6587\u63d0\u70bc\uff0c\u4e0d\u4f1a\u6269\u5c55\u539f\u6587\u5916\u7684\u63a8\u65ad\u3002",
+            "## \u8fb9\u754c\u548c\u4e0d\u786e\u5b9a\u6027",
+            "- \u5f53\u524d\u4e3a\u65e0\u6a21\u578b Key \u7684\u672c\u5730\u89e3\u91ca\u6a21\u5f0f\uff0c\u6240\u4ee5\u6211\u4f1a\u5c3d\u91cf\u57fa\u4e8e\u539f\u6587\u63d0\u70bc\uff0c\u4e0d\u6269\u5c55\u539f\u6587\u5916\u7684\u63a8\u65ad\u3002",
         ]
     )
     return "\n".join(lines)

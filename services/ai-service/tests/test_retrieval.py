@@ -63,5 +63,6 @@ def test_vague_question_gets_plain_explanation() -> None:
 
     assert "\u7b80\u5355\u8bf4" in answer
     assert "\u53ef\u4ee5\u62c6\u6210\u51e0\u4e2a\u8981\u70b9" in answer
-    assert "\u5f15\u7528\u4f9d\u636e" in answer
+    assert "## \u6587\u6863\u4f9d\u636e" in answer
+    assert "## \u8fb9\u754c\u548c\u4e0d\u786e\u5b9a\u6027" in answer
     assert "2. " in answer
