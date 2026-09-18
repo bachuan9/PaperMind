@@ -10,7 +10,13 @@ from fastapi.responses import StreamingResponse
 
 from .analyzer import build_document_insights
 from .embeddings import embed_text
-from .llm import ModelStreamError, answer_with_model, elapsed_ms, stream_answer_with_model
+from .llm import (
+    ModelStreamError,
+    answer_with_model,
+    elapsed_ms,
+    generate_insights_with_model,
+    stream_answer_with_model,
+)
 from .models import (
     AskRequest,
     AskResponse,
@@ -147,8 +153,9 @@ def get_document(
 
 
 @app.get("/documents/{document_id}/insights", response_model=DocumentInsightResponse)
-def get_document_insights(
+async def get_document_insights(
     document_id: str,
+    settings: Settings = Depends(get_settings),
     store: JsonStore = Depends(get_store),
 ) -> DocumentInsightResponse:
     document = store.get_document(document_id)
@@ -156,7 +163,25 @@ def get_document_insights(
         raise HTTPException(status_code=404, detail="文档不存在")
     if document.status != "ready":
         raise HTTPException(status_code=409, detail="文档尚未解析完成")
-    return build_document_insights(document.chunks)
+    fallback_insights = build_document_insights(document.chunks)
+    model_result = await generate_insights_with_model(
+        settings=settings,
+        chunks=document.chunks,
+    )
+    if model_result.status != "skipped":
+        store.append_llm_log(
+            build_llm_log(
+                document_id=document_id,
+                question="文档结构化洞察",
+                settings=settings,
+                mode="model" if model_result.insights else "extractive",
+                status=model_result.status,
+                latency_ms=model_result.latency_ms,
+                citation_count=len(document.chunks),
+                error=model_result.error,
+            )
+        )
+    return model_result.insights or fallback_insights
 
 
 @app.get("/documents/{document_id}/notes", response_model=list[DocumentNote])

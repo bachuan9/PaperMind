@@ -81,8 +81,8 @@ class ConversationMessage(BaseModel):
 
 
 class InsightSection(BaseModel):
-    title: str
-    summary: str
+    title: str = Field(min_length=1, max_length=80)
+    summary: str = Field(min_length=1, max_length=500)
 
 
 class DocumentInsightResponse(BaseModel):
@@ -93,6 +93,14 @@ class DocumentInsightResponse(BaseModel):
     sections: list[InsightSection]
     suggested_questions: list[str]
     mode: Literal["model", "extractive"]
+
+
+class StructuredInsightPayload(BaseModel):
+    short_summary: str = Field(min_length=1, max_length=500)
+    detailed_summary: str = Field(min_length=1, max_length=1400)
+    keywords: list[str] = Field(default_factory=list, max_length=12)
+    sections: list[InsightSection] = Field(default_factory=list, max_length=8)
+    suggested_questions: list[str] = Field(default_factory=list, max_length=6)
 
 
 class NoteRequest(BaseModel):
