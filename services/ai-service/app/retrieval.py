@@ -6,17 +6,18 @@ from .models import Citation, DocumentChunk
 
 
 TOKEN_RE = re.compile(r"[\w\u4e00-\u9fff]+", re.UNICODE)
+SENTENCE_RE = re.compile(r"(?<=[.!?\u3002\uff01\uff1f])\s*|\n+")
 VAGUE_CONTEXT_PATTERNS = (
-    "\u4ec0\u4e48\u610f\u601d",  # 什么意思
-    "\u610f\u601d",  # 意思
-    "\u8bb2\u4ec0\u4e48",  # 讲什么
-    "\u8bf4\u4ec0\u4e48",  # 说什么
-    "\u603b\u7ed3",  # 总结
-    "\u6982\u62ec",  # 概括
-    "\u89e3\u91ca",  # 解释
-    "\u770b\u4e0d\u61c2",  # 看不懂
-    "\u8fd9\u6bb5",  # 这段
-    "\u8fd9\u4e2a",  # 这个
+    "\u4ec0\u4e48\u610f\u601d",
+    "\u610f\u601d",
+    "\u8bb2\u4ec0\u4e48",
+    "\u8bf4\u4ec0\u4e48",
+    "\u603b\u7ed3",
+    "\u6982\u62ec",
+    "\u89e3\u91ca",
+    "\u770b\u4e0d\u61c2",
+    "\u8fd9\u6bb5",
+    "\u8fd9\u4e2a",
 )
 
 
@@ -72,7 +73,8 @@ def is_context_question(question: str) -> bool:
     if any(pattern in compact for pattern in VAGUE_CONTEXT_PATTERNS):
         return True
     return len(compact) <= 8 and any(
-        token in compact for token in ("\u4ec0\u4e48", "\u600e\u4e48", "\u4e3a\u4ec0\u4e48")
+        token in compact
+        for token in ("\u4ec0\u4e48", "\u600e\u4e48", "\u4e3a\u4ec0\u4e48")
     )
 
 
@@ -85,17 +87,16 @@ def build_extractive_answer(question: str, citations: list[Citation]) -> str:
             "\u6216\u786e\u8ba4\u6587\u6863\u662f\u5426\u5df2\u5b8c\u6574\u89e3\u6790\u3002"
         )
 
+    if is_context_question(question):
+        return build_plain_explanation(citations)
+
     lines = [
         "\u57fa\u4e8e\u5f53\u524d\u6587\u6863\u4e2d\u6700\u76f8\u5173\u7684\u7247\u6bb5\uff0c\u53ef\u4ee5\u5148\u8fd9\u6837\u7406\u89e3\uff1a",
         "",
     ]
     for index, citation in enumerate(citations[:3], start=1):
-        source = (
-            f"\u7b2c {citation.page_number} \u9875"
-            if citation.page_number
-            else "\u6b63\u6587\u7247\u6bb5"
-        )
-        lines.append(f"{index}. {source} \u63d0\u5230\uff1a{citation.text}")
+        source = format_source(citation)
+        lines.append(f"{index}. {source} \u63d0\u5230\uff1a{trim_text(citation.text, 220)}")
 
     lines.extend(
         [
@@ -104,6 +105,86 @@ def build_extractive_answer(question: str, citations: list[Citation]) -> str:
         ]
     )
     return "\n".join(lines)
+
+
+def build_plain_explanation(citations: list[Citation]) -> str:
+    points = extract_explanation_points(citations)
+    summary = points[0] if points else citations[0].text
+
+    lines = [
+        f"\u7b80\u5355\u8bf4\uff0c\u8fd9\u7bc7\u6587\u6863\u4e3b\u8981\u662f\u5728\u8bf4\uff1a{trim_text(summary, 130)}",
+        "",
+        "\u53ef\u4ee5\u62c6\u6210\u51e0\u4e2a\u8981\u70b9\uff1a",
+    ]
+    for index, point in enumerate(points[:3], start=1):
+        lines.append(f"{index}. {trim_text(point, 110)}")
+
+    lines.extend(["", "\u5f15\u7528\u4f9d\u636e\uff1a"])
+    for citation in citations[:2]:
+        lines.append(f"- {format_source(citation)}\uff1a{trim_text(citation.text, 120)}")
+
+    lines.extend(
+        [
+            "",
+            "\u5f53\u524d\u4e3a\u65e0\u6a21\u578b Key \u7684\u672c\u5730\u89e3\u91ca\u6a21\u5f0f\uff0c\u6240\u4ee5\u6211\u4f1a\u5c3d\u91cf\u57fa\u4e8e\u539f\u6587\u63d0\u70bc\uff0c\u4e0d\u4f1a\u6269\u5c55\u539f\u6587\u5916\u7684\u63a8\u65ad\u3002",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def extract_explanation_points(citations: list[Citation], limit: int = 4) -> list[str]:
+    points: list[str] = []
+    for citation in citations:
+        for sentence in split_sentences(citation.text):
+            if is_low_value_sentence(sentence):
+                continue
+            if any(sentence in point or point in sentence for point in points):
+                continue
+            points.append(sentence)
+            if len(points) >= limit:
+                return points
+    return points
+
+
+def split_sentences(text: str) -> list[str]:
+    cleaned = text.replace("#", " ")
+    raw_sentences = SENTENCE_RE.split(cleaned)
+    sentences: list[str] = []
+    for raw_sentence in raw_sentences:
+        sentence = re.sub(r"\s+", " ", raw_sentence).strip(" -\t")
+        if not sentence:
+            continue
+        if len(sentence) > 180:
+            sentences.extend(split_long_sentence(sentence))
+        else:
+            sentences.append(sentence)
+    return sentences
+
+
+def split_long_sentence(sentence: str) -> list[str]:
+    normalized = sentence
+    for separator in (";", ",", "\uff0c", "\uff1b"):
+        normalized = normalized.replace(separator, "|")
+    return [
+        part.strip(" -\t")
+        for part in normalized.split("|")
+        if len(part.strip(" -\t")) >= 8
+    ]
+
+
+def is_low_value_sentence(sentence: str) -> bool:
+    compact = re.sub(r"\s+", "", sentence)
+    if len(compact) < 8:
+        return True
+    if re.fullmatch(r"[\W_]+", compact):
+        return True
+    return False
+
+
+def format_source(citation: Citation) -> str:
+    if citation.page_number:
+        return f"\u7b2c {citation.page_number} \u9875"
+    return "\u6b63\u6587\u7247\u6bb5"
 
 
 def tokenize(text: str) -> list[str]:
