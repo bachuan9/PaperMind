@@ -16,6 +16,7 @@ PaperMind 是一个面向简历项目和作品集展示的 AI 论文/文档阅�
 - 记录最近的模型调用日志，便于排查模型回退原因
 - 提供调用日志页面，可查看最近调用状态、耗时、模型和错误信息
 - 支持流式问答输出，DeepSeek 生成过程会实时显示在页面中
+- 支持一键导出 Markdown 阅读笔记，包含摘要、关键词、提纲、建议追问和关键摘录
 
 ## 技术栈
 
@@ -159,13 +160,12 @@ samples/rag-notes.md
 ## 简历写法参考
 
 ```text
-独立开发 PaperMind AI 文档阅读平台，基于 Next.js、TypeScript、FastAPI 和 Python 实现文档上传、文本解析、分块检索、基于引用的问答、文档洞察和摘要展示。封装 SiliconFlow DeepSeek 模型调用层，并在未配置模型时提供基于原文片段的兜底回答，提升系统可演示性和稳定性。
+独立开发 PaperMind AI 文档阅读平台，基于 Next.js、TypeScript、FastAPI 和 Python 实现文档上传、文本解析、分块检索、基于引用的问答、文档洞察、流式回答和 Markdown 笔记导出。封装 SiliconFlow DeepSeek 模型调用层，并在未配置模型时提供基于原文片段的兜底回答，提升系统可演示性和稳定性。
 ```
 
 后续可以继续扩展为：
 
 - SQLite/PostgreSQL 持久化存储
 - 向量数据库和语义检索
-- 笔记导出
 - 文档处理异步队列
 - 模型调用成本统计
