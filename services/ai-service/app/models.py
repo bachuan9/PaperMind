@@ -87,10 +87,24 @@ class InsightSection(BaseModel):
 
 class DocumentInsightResponse(BaseModel):
     summary: str
+    short_summary: str
+    detailed_summary: str
     keywords: list[str]
     sections: list[InsightSection]
     suggested_questions: list[str]
     mode: Literal["model", "extractive"]
+
+
+class NoteRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=4000)
+
+
+class DocumentNote(BaseModel):
+    id: str
+    document_id: str
+    content: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class ModelStatusResponse(BaseModel):

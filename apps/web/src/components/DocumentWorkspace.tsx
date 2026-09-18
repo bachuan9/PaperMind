@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { ArrowLeft, Download, FileText } from "lucide-react";
 import { AskPanel } from "./AskPanel";
+import { DocumentNotesPanel } from "./DocumentNotesPanel";
 import { InsightPanel } from "./InsightPanel";
 import { StatusPill } from "./StatusPill";
 import { getDocumentInsights } from "@/lib/api";
@@ -61,6 +62,7 @@ export function DocumentWorkspace({ document }: DocumentWorkspaceProps) {
       <div className="document-layout">
         <div className="reader">
           <InsightPanel documentId={document.id} />
+          <DocumentNotesPanel documentId={document.id} />
 
           <section className="panel">
             <div className="panel-header">
@@ -137,7 +139,7 @@ function buildNotesMarkdown(
     `- 阅读状态：${document.status}`,
     "",
     "## 摘要",
-    insights.summary || document.summary || "暂无摘要。",
+    insights.detailed_summary || insights.summary || document.summary || "暂无摘要。",
     "",
     "## 关键词",
     ...keywords,

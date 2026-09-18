@@ -19,6 +19,8 @@ def test_build_document_insights_returns_summary_and_questions() -> None:
     insights = build_document_insights(chunks)
 
     assert insights.summary
+    assert insights.short_summary
+    assert insights.detailed_summary
     assert insights.keywords
     assert insights.sections
     assert insights.suggested_questions

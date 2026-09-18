@@ -1,6 +1,12 @@
 from pathlib import Path
 
-from app.models import ConversationMessage, DocumentChunk, DocumentSummary, LlmCallLog
+from app.models import (
+    ConversationMessage,
+    DocumentChunk,
+    DocumentNote,
+    DocumentSummary,
+    LlmCallLog,
+)
 from app.runtime import get_model_status
 from app.settings import Settings
 from app.storage import JsonStore, now_utc
@@ -87,3 +93,20 @@ def test_json_store_persists_conversations_and_vectors(tmp_path: Path) -> None:
     assert store.delete_document("doc-1") is True
     assert store.get_document_vectors("doc-1") == {}
     assert store.list_conversations("doc-1") == []
+
+
+def test_json_store_persists_document_notes(tmp_path: Path) -> None:
+    store = JsonStore(tmp_path)
+    note = DocumentNote(
+        id="note-1",
+        document_id="doc-1",
+        content="\u8fd9\u662f\u4e00\u6761\u9605\u8bfb\u7b14\u8bb0",
+        created_at=now_utc(),
+        updated_at=now_utc(),
+    )
+
+    store.save_note(note)
+
+    notes = store.list_notes("doc-1")
+    assert len(notes) == 1
+    assert notes[0].content == "\u8fd9\u662f\u4e00\u6761\u9605\u8bfb\u7b14\u8bb0"

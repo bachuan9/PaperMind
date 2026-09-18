@@ -544,11 +544,42 @@ button {
   background: var(--surface-muted);
 }
 
+.insight-summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .insight-summary p {
   margin: 8px 0 0;
   color: #344054;
   font-size: 14px;
   line-height: 1.7;
+}
+
+.segmented-control {
+  display: inline-flex;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.segment-button {
+  min-width: 44px;
+  height: 30px;
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.segment-button.is-active {
+  color: white;
+  background: var(--accent);
 }
 
 .insight-heading {
@@ -623,6 +654,56 @@ button {
   color: #667085;
   font-size: 13px;
   line-height: 1.55;
+}
+
+.note-form {
+  display: grid;
+  gap: 12px;
+}
+
+.note-input {
+  width: 100%;
+  min-height: 110px;
+  resize: vertical;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--surface);
+}
+
+.note-input:focus {
+  border-color: var(--accent);
+  outline: 3px solid rgba(31, 122, 109, 0.15);
+}
+
+.note-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.note-item {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.note-item p {
+  margin: 0;
+  color: #344054;
+  font-size: 13px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.note-item span {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .chunk {
@@ -912,6 +993,11 @@ button {
 
   .topbar-actions {
     justify-content: flex-start;
+  }
+
+  .insight-summary-header {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .doc-row {

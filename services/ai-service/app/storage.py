@@ -10,6 +10,7 @@ from .models import (
     ConversationSummary,
     DocumentChunk,
     DocumentDetail,
+    DocumentNote,
     DocumentSummary,
     LlmCallLog,
 )
@@ -88,6 +89,7 @@ class JsonStore:
             data.get("documents", {}).pop(document_id, None)
             data.get("chunks", {}).pop(document_id, None)
             data.get("vectors", {}).pop(document_id, None)
+            data.get("notes", {}).pop(document_id, None)
             conversation_ids = [
                 conversation_id
                 for conversation_id, conversation in data.get("conversations", {}).items()
@@ -186,6 +188,24 @@ class JsonStore:
             for item in data.get("messages", {}).get(conversation_id, [])
         ]
 
+    def list_notes(self, document_id: str) -> list[DocumentNote]:
+        data = self._read()
+        notes = [
+            DocumentNote.model_validate(item)
+            for item in data.get("notes", {}).get(document_id, [])
+        ]
+        return sorted(notes, key=lambda item: item.created_at, reverse=True)
+
+    def save_note(self, note: DocumentNote) -> DocumentNote:
+        with self._lock:
+            data = self._read()
+            data.setdefault("notes", {}).setdefault(note.document_id, []).insert(
+                0,
+                note.model_dump(mode="json"),
+            )
+            self._write(data)
+        return note
+
     def _read(self) -> dict:
         try:
             data = json.loads(self.store_path.read_text(encoding="utf-8"))
@@ -218,4 +238,5 @@ def empty_store() -> dict:
         "llm_logs": [],
         "conversations": {},
         "messages": {},
+        "notes": {},
     }

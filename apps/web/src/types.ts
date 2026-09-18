@@ -71,10 +71,20 @@ export type InsightSection = {
 
 export type DocumentInsightResponse = {
   summary: string;
+  short_summary: string;
+  detailed_summary: string;
   keywords: string[];
   sections: InsightSection[];
   suggested_questions: string[];
   mode: "model" | "extractive";
+};
+
+export type DocumentNote = {
+  id: string;
+  document_id: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
 };
 
 export type ModelStatusResponse = {

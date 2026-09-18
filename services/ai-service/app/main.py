@@ -20,9 +20,11 @@ from .models import (
     DocumentChunk,
     DocumentDetail,
     DocumentInsightResponse,
+    DocumentNote,
     DocumentSummary,
     LlmCallLog,
     ModelStatusResponse,
+    NoteRequest,
 )
 from .parser import build_summary, chunk_pages, parse_document, validate_extension
 from .retrieval import build_extractive_answer, retrieve
@@ -155,6 +157,40 @@ def get_document_insights(
     if document.status != "ready":
         raise HTTPException(status_code=409, detail="文档尚未解析完成")
     return build_document_insights(document.chunks)
+
+
+@app.get("/documents/{document_id}/notes", response_model=list[DocumentNote])
+def list_document_notes(
+    document_id: str,
+    store: JsonStore = Depends(get_store),
+) -> list[DocumentNote]:
+    document = store.get_document(document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    return store.list_notes(document_id)
+
+
+@app.post("/documents/{document_id}/notes", response_model=DocumentNote)
+def create_document_note(
+    document_id: str,
+    request: NoteRequest,
+    store: JsonStore = Depends(get_store),
+) -> DocumentNote:
+    document = store.get_document(document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    content = request.content.strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="笔记内容不能为空")
+    now = now_utc()
+    note = DocumentNote(
+        id=str(uuid4()),
+        document_id=document_id,
+        content=content,
+        created_at=now,
+        updated_at=now,
+    )
+    return store.save_note(note)
 
 
 @app.delete("/documents/{document_id}")

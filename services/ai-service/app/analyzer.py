@@ -29,13 +29,16 @@ STOPWORDS = {
 
 def build_document_insights(chunks: list[DocumentChunk]) -> DocumentInsightResponse:
     text = "\n".join(chunk.text for chunk in sorted(chunks, key=lambda item: item.index))
-    summary = build_summary(text)
+    short_summary = build_summary(text, limit=220, max_sentences=2)
+    detailed_summary = build_summary(text, limit=860, max_sentences=8)
     keywords = extract_keywords(text)
     sections = build_sections(chunks)
     questions = build_suggested_questions(keywords, sections)
 
     return DocumentInsightResponse(
-        summary=summary,
+        summary=short_summary,
+        short_summary=short_summary,
+        detailed_summary=detailed_summary,
         keywords=keywords,
         sections=sections,
         suggested_questions=questions,
@@ -43,7 +46,7 @@ def build_document_insights(chunks: list[DocumentChunk]) -> DocumentInsightRespo
     )
 
 
-def build_summary(text: str, limit: int = 460) -> str:
+def build_summary(text: str, limit: int = 460, max_sentences: int = 4) -> str:
     sentences = [
         clean_sentence(sentence)
         for sentence in SENTENCE_RE.split(text)
@@ -62,7 +65,7 @@ def build_summary(text: str, limit: int = 460) -> str:
             break
         selected.append(sentence)
         total = next_total
-        if len(selected) >= 4:
+        if len(selected) >= max_sentences:
             break
 
     if not selected:

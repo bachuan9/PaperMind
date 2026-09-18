@@ -11,6 +11,7 @@ type InsightPanelProps = {
 
 export function InsightPanel({ documentId }: InsightPanelProps) {
   const [insights, setInsights] = useState<DocumentInsightResponse | null>(null);
+  const [summaryMode, setSummaryMode] = useState<"short" | "detailed">("short");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -59,11 +60,35 @@ export function InsightPanel({ documentId }: InsightPanelProps) {
         {insights ? (
           <div className="insight-stack">
             <div className="insight-summary">
-              <div className="insight-heading">
-                <Lightbulb size={17} />
-                <span>摘要</span>
+              <div className="insight-summary-header">
+                <div className="insight-heading">
+                  <Lightbulb size={17} />
+                  <span>摘要</span>
+                </div>
+                <div className="segmented-control" aria-label="摘要类型">
+                  <button
+                    className={`segment-button ${summaryMode === "short" ? "is-active" : ""}`}
+                    type="button"
+                    onClick={() => setSummaryMode("short")}
+                  >
+                    短
+                  </button>
+                  <button
+                    className={`segment-button ${
+                      summaryMode === "detailed" ? "is-active" : ""
+                    }`}
+                    type="button"
+                    onClick={() => setSummaryMode("detailed")}
+                  >
+                    详细
+                  </button>
+                </div>
               </div>
-              <p>{insights.summary || "暂无摘要"}</p>
+              <p>
+                {summaryMode === "short"
+                  ? insights.short_summary || insights.summary || "暂无摘要"
+                  : insights.detailed_summary || insights.summary || "暂无摘要"}
+              </p>
             </div>
 
             <div className="keyword-row">

@@ -5,6 +5,7 @@ import type {
   ConversationSummary,
   DocumentDetail,
   DocumentInsightResponse,
+  DocumentNote,
   DocumentSummary,
   LlmCallLog,
   ModelStatusResponse
@@ -52,6 +53,29 @@ export async function getDocument(id: string): Promise<DocumentDetail> {
 export async function getDocumentInsights(id: string): Promise<DocumentInsightResponse> {
   return parseResponse(
     await fetch(`${API_BASE}/documents/${id}/insights`, { cache: "no-store" })
+  );
+}
+
+export async function listDocumentNotes(id: string): Promise<DocumentNote[]> {
+  return parseResponse(
+    await fetch(`${API_BASE}/documents/${encodeURIComponent(id)}/notes`, {
+      cache: "no-store"
+    })
+  );
+}
+
+export async function createDocumentNote(
+  id: string,
+  content: string
+): Promise<DocumentNote> {
+  return parseResponse(
+    await fetch(`${API_BASE}/documents/${encodeURIComponent(id)}/notes`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ content })
+    })
   );
 }
 
