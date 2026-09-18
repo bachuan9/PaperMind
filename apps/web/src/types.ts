@@ -38,3 +38,16 @@ export type AskResponse = {
   citations: Citation[];
   mode: "model" | "extractive";
 };
+
+export type InsightSection = {
+  title: string;
+  summary: string;
+};
+
+export type DocumentInsightResponse = {
+  summary: string;
+  keywords: string[];
+  sections: InsightSection[];
+  suggested_questions: string[];
+  mode: "model" | "extractive";
+};

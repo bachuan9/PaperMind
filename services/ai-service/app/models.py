@@ -48,3 +48,16 @@ class AskResponse(BaseModel):
     answer: str
     citations: list[Citation]
     mode: Literal["model", "extractive"]
+
+
+class InsightSection(BaseModel):
+    title: str
+    summary: str
+
+
+class DocumentInsightResponse(BaseModel):
+    summary: str
+    keywords: list[str]
+    sections: list[InsightSection]
+    suggested_questions: list[str]
+    mode: Literal["model", "extractive"]

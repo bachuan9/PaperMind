@@ -1,4 +1,9 @@
-import type { AskResponse, DocumentDetail, DocumentSummary } from "@/types";
+import type {
+  AskResponse,
+  DocumentDetail,
+  DocumentInsightResponse,
+  DocumentSummary
+} from "@/types";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_AI_SERVICE_URL?.replace(/\/$/, "") ??
@@ -29,6 +34,12 @@ export async function listDocuments(): Promise<DocumentSummary[]> {
 
 export async function getDocument(id: string): Promise<DocumentDetail> {
   return parseResponse(await fetch(`${API_BASE}/documents/${id}`, { cache: "no-store" }));
+}
+
+export async function getDocumentInsights(id: string): Promise<DocumentInsightResponse> {
+  return parseResponse(
+    await fetch(`${API_BASE}/documents/${id}/insights`, { cache: "no-store" })
+  );
 }
 
 export async function uploadDocument(file: File): Promise<DocumentSummary> {

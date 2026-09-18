@@ -4,8 +4,16 @@ from uuid import uuid4
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
+from .analyzer import build_document_insights
 from .llm import answer_with_model
-from .models import AskRequest, AskResponse, DocumentChunk, DocumentDetail, DocumentSummary
+from .models import (
+    AskRequest,
+    AskResponse,
+    DocumentChunk,
+    DocumentDetail,
+    DocumentInsightResponse,
+    DocumentSummary,
+)
 from .parser import build_summary, chunk_pages, parse_document, validate_extension
 from .retrieval import build_extractive_answer, retrieve
 from .settings import Settings, get_settings
@@ -111,6 +119,19 @@ def get_document(
     if document is None:
         raise HTTPException(status_code=404, detail="文档不存在")
     return document
+
+
+@app.get("/documents/{document_id}/insights", response_model=DocumentInsightResponse)
+def get_document_insights(
+    document_id: str,
+    store: JsonStore = Depends(get_store),
+) -> DocumentInsightResponse:
+    document = store.get_document(document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    if document.status != "ready":
+        raise HTTPException(status_code=409, detail="文档尚未解析完成")
+    return build_document_insights(document.chunks)
 
 
 @app.delete("/documents/{document_id}")

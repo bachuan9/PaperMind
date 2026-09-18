@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowLeft, FileText } from "lucide-react";
 import { AskPanel } from "./AskPanel";
+import { InsightPanel } from "./InsightPanel";
 import { StatusPill } from "./StatusPill";
 import type { DocumentDetail } from "@/types";
 
@@ -26,15 +27,18 @@ export function DocumentWorkspace({ document }: DocumentWorkspaceProps) {
       </div>
 
       <div className="document-layout">
-        <section className="panel">
-          <div className="panel-header">
-            <div>
-              <h2 className="panel-title">原文片段</h2>
+        <div className="reader">
+          <InsightPanel documentId={document.id} />
+
+          <section className="panel">
+            <div className="panel-header">
+              <div>
+                <h2 className="panel-title">原文片段</h2>
+              </div>
+              <StatusPill status={document.status} />
             </div>
-            <StatusPill status={document.status} />
-          </div>
-          <div className="panel-body">
-            <div className="reader">
+            <div className="panel-body">
+              <div className="reader">
               {document.chunks.map((chunk) => (
                 <article className="chunk" key={chunk.id}>
                   <div className="chunk-header">
@@ -50,9 +54,10 @@ export function DocumentWorkspace({ document }: DocumentWorkspaceProps) {
                   <strong>暂无可读片段</strong>
                 </div>
               ) : null}
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        </div>
 
         <AskPanel documentId={document.id} />
       </div>
