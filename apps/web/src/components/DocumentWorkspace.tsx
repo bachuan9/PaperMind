@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { ArrowLeft, Download, FileText } from "lucide-react";
+import { AgentToolsPanel } from "./AgentToolsPanel";
 import { AskPanel } from "./AskPanel";
 import { DocumentNotesPanel } from "./DocumentNotesPanel";
 import { InsightPanel } from "./InsightPanel";
@@ -65,6 +66,9 @@ export function DocumentWorkspace({ document }: DocumentWorkspaceProps) {
       <div className="document-layout">
         <div className="reader">
           {isReady ? <InsightPanel documentId={document.id} /> : null}
+          {isReady ? (
+            <AgentToolsPanel documentId={document.id} documentTitle={document.title} />
+          ) : null}
           {!isReady ? (
             <ProcessingJobsPanel documentId={document.id} active={isProcessing} />
           ) : null}

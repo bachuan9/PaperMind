@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -7,6 +7,14 @@ from pydantic import BaseModel, Field
 DocumentStatus = Literal["ready", "failed", "processing"]
 MessageRole = Literal["user", "assistant"]
 ProcessingJobStatus = Literal["queued", "processing", "succeeded", "failed"]
+AgentToolName = Literal[
+    "summarize_document",
+    "extract_keywords",
+    "generate_questions",
+    "create_markdown_note",
+    "export_outline",
+]
+AgentToolOutputFormat = Literal["markdown", "json"]
 
 
 class DocumentChunk(BaseModel):
@@ -147,6 +155,27 @@ class DocumentNote(BaseModel):
     content: str
     created_at: datetime
     updated_at: datetime
+
+
+class AgentToolDefinition(BaseModel):
+    name: AgentToolName
+    title: str
+    description: str
+    output_format: AgentToolOutputFormat = "markdown"
+
+
+class AgentToolRequest(BaseModel):
+    tool_name: AgentToolName
+
+
+class AgentToolResult(BaseModel):
+    tool_name: AgentToolName
+    title: str
+    output_format: AgentToolOutputFormat = "markdown"
+    content: str
+    data: dict[str, Any] = Field(default_factory=dict)
+    citations: list[Citation] = Field(default_factory=list)
+    created_at: datetime
 
 
 class ModelStatusResponse(BaseModel):

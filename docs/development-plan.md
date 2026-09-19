@@ -108,7 +108,7 @@
 
 ## 阶段六：补齐工程化能力
 
-状态：进行中。
+状态：基本完成。
 
 已完成：
 
@@ -130,7 +130,7 @@
 
 ## 阶段七：增加 Agent 和作品集能力
 
-状态：未完成。
+状态：进行中。
 
 计划内容：
 
@@ -146,6 +146,15 @@
 - 接口文档
 - 测试报告
 - 简历项目描述
+
+本轮已完成：
+
+- 新增后端 Agent 工具注册表，将 `summarize_document`、`extract_keywords`、`generate_questions`、`create_markdown_note`、`export_outline` 封装为可调度工具。
+- 新增统一工具执行接口：`POST /documents/{document_id}/agent-tools/run`。
+- 工具结果同时返回 Markdown 内容、结构化 JSON 数据、引用片段和生成时间。
+- 阅读页新增 Agent 工具面板，支持一键运行工具、复制结果和下载 Markdown。
+- E2E 覆盖上传文档后执行 Agent 工具并展示结果。
+
 ## 阶段六本轮更新
 
 已完成：
@@ -158,4 +167,4 @@
 - Playwright 端到端测试：覆盖上传文档、阅读页和文档问答主流程。
 
 仍待推进：
-- 更完整的 Playwright 场景：大文件、模型超时、多轮上下文过长。
+- 阶段七后续补充系统架构图、数据库设计图、接口文档、测试报告和简历项目描述。

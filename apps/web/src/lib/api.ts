@@ -1,4 +1,7 @@
 import type {
+  AgentToolDefinition,
+  AgentToolName,
+  AgentToolResult,
   AskResponse,
   AskStreamEvent,
   ConversationMessage,
@@ -43,6 +46,10 @@ export async function listLlmLogs(): Promise<LlmCallLog[]> {
   return parseResponse(await fetch(`${API_BASE}/llm/logs`, { cache: "no-store" }));
 }
 
+export async function listAgentTools(): Promise<AgentToolDefinition[]> {
+  return parseResponse(await fetch(`${API_BASE}/agent-tools`, { cache: "no-store" }));
+}
+
 export async function listDocuments(): Promise<DocumentSummary[]> {
   return parseResponse(await fetch(`${API_BASE}/documents`, { cache: "no-store" }));
 }
@@ -62,6 +69,21 @@ export async function listProcessingJobs(id: string): Promise<ProcessingJob[]> {
 export async function getDocumentInsights(id: string): Promise<DocumentInsightResponse> {
   return parseResponse(
     await fetch(`${API_BASE}/documents/${id}/insights`, { cache: "no-store" })
+  );
+}
+
+export async function runDocumentAgentTool(
+  id: string,
+  toolName: AgentToolName
+): Promise<AgentToolResult> {
+  return parseResponse(
+    await fetch(`${API_BASE}/documents/${encodeURIComponent(id)}/agent-tools/run`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ tool_name: toolName })
+    })
   );
 }
 

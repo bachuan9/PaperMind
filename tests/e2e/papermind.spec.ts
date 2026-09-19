@@ -76,6 +76,11 @@ test("uploads a markdown document and asks a grounded question", async ({ page }
   await page.getByText("e2e-rag-notes").click();
 
   await expect(page.getByText("Grounded answers require source citations")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Agent 工具" })).toBeVisible();
+
+  await page.getByRole("button", { name: "复习题" }).click();
+  await expect(page.locator(".agent-output")).toContainText("复习题");
+  await expect(page.locator(".agent-output")).toContainText("Grounded answers");
 
   await page.locator(".question-input").fill("What requires source citations?");
   await page.locator(".question-form button[type='submit']").click();

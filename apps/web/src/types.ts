@@ -103,6 +103,30 @@ export type DocumentNote = {
   updated_at: string;
 };
 
+export type AgentToolName =
+  | "summarize_document"
+  | "extract_keywords"
+  | "generate_questions"
+  | "create_markdown_note"
+  | "export_outline";
+
+export type AgentToolDefinition = {
+  name: AgentToolName;
+  title: string;
+  description: string;
+  output_format: "markdown" | "json";
+};
+
+export type AgentToolResult = {
+  tool_name: AgentToolName;
+  title: string;
+  output_format: "markdown" | "json";
+  content: string;
+  data: Record<string, unknown>;
+  citations: Citation[];
+  created_at: string;
+};
+
 export type ModelStatusResponse = {
   provider: string;
   model: string;

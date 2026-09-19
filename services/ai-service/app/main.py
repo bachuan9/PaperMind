@@ -9,6 +9,7 @@ from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
+from .agent_tools import list_agent_tool_definitions, run_agent_tool
 from .analyzer import build_document_insights
 from .embeddings import embed_text
 from .engineering import configure_engineering
@@ -21,6 +22,9 @@ from .llm import (
     stream_answer_with_model,
 )
 from .models import (
+    AgentToolDefinition,
+    AgentToolRequest,
+    AgentToolResult,
     AskCacheEntry,
     AskRequest,
     AskResponse,
@@ -80,6 +84,11 @@ def model_status(settings: Settings = Depends(get_settings)) -> ModelStatusRespo
 @app.get("/llm/logs", response_model=list[LlmCallLog])
 def list_llm_logs(store: JsonStore = Depends(get_store)) -> list[LlmCallLog]:
     return store.list_llm_logs()
+
+
+@app.get("/agent-tools", response_model=list[AgentToolDefinition])
+def list_agent_tools() -> list[AgentToolDefinition]:
+    return list_agent_tool_definitions()
 
 
 @app.get("/documents", response_model=list[DocumentSummary])
@@ -294,6 +303,23 @@ def list_document_processing_jobs(
     if document is None:
         raise HTTPException(status_code=404, detail="文档不存在")
     return store.list_processing_jobs(document_id)
+
+
+@app.post(
+    "/documents/{document_id}/agent-tools/run",
+    response_model=AgentToolResult,
+)
+def run_document_agent_tool(
+    document_id: str,
+    request: AgentToolRequest,
+    store: JsonStore = Depends(get_store),
+) -> AgentToolResult:
+    document = store.get_document(document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    if document.status != "ready":
+        raise HTTPException(status_code=409, detail="文档尚未解析完成")
+    return run_agent_tool(request.tool_name, document)
 
 
 @app.get("/documents/{document_id}/insights", response_model=DocumentInsightResponse)
