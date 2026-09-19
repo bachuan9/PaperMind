@@ -223,6 +223,89 @@ def test_upload_enqueues_document_when_redis_queue_enabled(
         app.dependency_overrides.clear()
 
 
+def test_upload_rejects_file_larger_than_configured_limit(tmp_path: Path) -> None:
+    store = JsonStore(tmp_path)
+    app.dependency_overrides[get_store] = lambda: store
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        ai_data_dir=tmp_path,
+        ai_max_upload_mb=1,
+        deepseek_api_key="",
+    )
+
+    try:
+        client = TestClient(app)
+        upload = client.post(
+            "/documents",
+            files={
+                "file": (
+                    "oversized.md",
+                    b"x" * (1024 * 1024 + 1),
+                    "text/markdown",
+                )
+            },
+        )
+
+        assert upload.status_code == 413
+        assert upload.json()["error"]["code"] == "payload_too_large"
+        assert upload.headers["x-request-id"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_ask_falls_back_and_logs_model_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = JsonStore(tmp_path)
+
+    async def timeout_answer_with_model(**_: object) -> ModelAnswerResult:
+        return ModelAnswerResult(
+            answer=None,
+            status="failed",
+            latency_ms=30,
+            error="model request timed out",
+        )
+
+    monkeypatch.setattr("app.main.answer_with_model", timeout_answer_with_model)
+    app.dependency_overrides[get_store] = lambda: store
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        ai_data_dir=tmp_path,
+        deepseek_api_key="sk-test",
+    )
+
+    try:
+        client = TestClient(app)
+        upload = client.post(
+            "/documents",
+            files={
+                "file": (
+                    "timeout.md",
+                    b"Model timeout should fall back to cited local evidence.",
+                    "text/markdown",
+                )
+            },
+        )
+        assert upload.status_code == 200
+        document_id = upload.json()["id"]
+
+        answer = client.post(
+            f"/documents/{document_id}/ask",
+            json={"question": "What should happen when the model times out?"},
+        )
+        logs = client.get("/llm/logs")
+
+        assert answer.status_code == 200
+        assert answer.json()["mode"] == "extractive"
+        assert answer.json()["provider"] == "local"
+        assert answer.json()["fallback_reason"] == "model request timed out"
+        assert logs.status_code == 200
+        assert logs.json()[0]["status"] == "failed"
+        assert logs.json()[0]["error"] == "model request timed out"
+        assert logs.json()[0]["mode"] == "extractive"
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_ask_endpoint_uses_cached_answer(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -284,6 +367,126 @@ def test_ask_endpoint_uses_cached_answer(
         assert logs.status_code == 200
         assert logs.json()[0]["cache_hit"] is True
         assert logs.json()[1]["total_tokens"] == 25
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_consecutive_questions_keep_conversation_history(tmp_path: Path) -> None:
+    store = JsonStore(tmp_path)
+    app.dependency_overrides[get_store] = lambda: store
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        ai_data_dir=tmp_path,
+        deepseek_api_key="",
+    )
+
+    try:
+        client = TestClient(app)
+        upload = client.post(
+            "/documents",
+            files={
+                "file": (
+                    "history.md",
+                    b"PaperMind keeps conversation history for follow-up questions.",
+                    "text/markdown",
+                )
+            },
+        )
+        assert upload.status_code == 200
+        document_id = upload.json()["id"]
+
+        first_answer = client.post(
+            f"/documents/{document_id}/ask",
+            json={"question": "What does PaperMind keep?"},
+        )
+        conversation_id = first_answer.json()["conversation_id"]
+        second_answer = client.post(
+            f"/documents/{document_id}/ask",
+            json={
+                "question": "Why is that useful for follow-up questions?",
+                "conversation_id": conversation_id,
+            },
+        )
+        conversations = client.get(f"/documents/{document_id}/conversations")
+        messages = client.get(f"/conversations/{conversation_id}/messages")
+
+        assert first_answer.status_code == 200
+        assert second_answer.status_code == 200
+        assert second_answer.json()["conversation_id"] == conversation_id
+        assert conversations.status_code == 200
+        assert conversations.json()[0]["message_count"] == 4
+        assert messages.status_code == 200
+        assert [message["role"] for message in messages.json()] == [
+            "user",
+            "assistant",
+            "user",
+            "assistant",
+        ]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_cache_is_not_used_for_same_question_inside_existing_conversation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = JsonStore(tmp_path)
+    call_count = 0
+
+    async def fake_answer_with_model(**_: object) -> ModelAnswerResult:
+        nonlocal call_count
+        call_count += 1
+        return ModelAnswerResult(
+            answer=f"Model answer {call_count}",
+            status="success",
+            latency_ms=10,
+            prompt_tokens=18,
+            completion_tokens=4,
+            total_tokens=22,
+            estimated_cost_usd=0.00001,
+        )
+
+    monkeypatch.setattr("app.main.answer_with_model", fake_answer_with_model)
+    app.dependency_overrides[get_store] = lambda: store
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        ai_data_dir=tmp_path,
+        deepseek_api_key="sk-test",
+    )
+
+    try:
+        client = TestClient(app)
+        upload = client.post(
+            "/documents",
+            files={
+                "file": (
+                    "conversation-cache.md",
+                    b"Conversation cache boundaries should preserve multi-turn context.",
+                    "text/markdown",
+                )
+            },
+        )
+        assert upload.status_code == 200
+        document_id = upload.json()["id"]
+
+        first_answer = client.post(
+            f"/documents/{document_id}/ask",
+            json={"question": "What should preserve multi-turn context?"},
+        )
+        conversation_id = first_answer.json()["conversation_id"]
+        second_answer = client.post(
+            f"/documents/{document_id}/ask",
+            json={
+                "question": "What should preserve multi-turn context?",
+                "conversation_id": conversation_id,
+            },
+        )
+
+        assert first_answer.status_code == 200
+        assert second_answer.status_code == 200
+        assert first_answer.json()["cache_hit"] is False
+        assert second_answer.json()["cache_hit"] is False
+        assert first_answer.json()["answer"] == "Model answer 1"
+        assert second_answer.json()["answer"] == "Model answer 2"
+        assert call_count == 2
     finally:
         app.dependency_overrides.clear()
 

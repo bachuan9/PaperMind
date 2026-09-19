@@ -915,6 +915,14 @@ button {
   font-size: 11px;
 }
 
+.message-citations {
+  margin-top: 8px;
+}
+
+.message-citations .citation {
+  background: var(--surface);
+}
+
 .citation-list {
   display: grid;
   gap: 10px;

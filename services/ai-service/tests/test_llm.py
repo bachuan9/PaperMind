@@ -69,6 +69,45 @@ def test_build_chat_request_requires_fixed_answer_structure() -> None:
     assert "\u4e0d\u8981\u4f2a\u9020\u9875\u7801" in prompt
 
 
+def test_build_chat_request_compacts_long_history_before_model_call() -> None:
+    history = [
+        ConversationMessage(
+            id=f"message-{index}",
+            conversation_id="conversation-1",
+            role="user" if index % 2 == 0 else "assistant",
+            content=f"long history message {index} " * 160,
+            created_at=now_utc(),
+        )
+        for index in range(18)
+    ]
+
+    _, _, payload = build_chat_request(
+        settings=Settings(deepseek_api_key="sk-test"),
+        question="What remains in context?",
+        citations=[
+            Citation(
+                chunk_id="chunk-1",
+                page_number=1,
+                text="Only bounded history should be sent with retrieved evidence.",
+                score=0.9,
+            )
+        ],
+        stream=False,
+        history=history,
+    )
+
+    messages = payload["messages"]
+    history_messages = messages[1:-1]
+    payload_text = "\n".join(message["content"] for message in messages)
+
+    assert messages[0]["role"] == "system"
+    assert history_messages[0]["role"] == "system"
+    assert "\u88ab\u538b\u7f29\u7684\u8f83\u65e9\u5386\u53f2\u5bf9\u8bdd" in history_messages[0]["content"]
+    assert len(history_messages) <= 9
+    assert "What remains in context?" in messages[-1]["content"]
+    assert len(payload_text) < 9000
+
+
 def test_prepare_history_messages_compacts_long_history() -> None:
     history = [
         ConversationMessage(

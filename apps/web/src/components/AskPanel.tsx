@@ -163,9 +163,28 @@ export function AskPanel({ documentId }: { documentId: string }) {
                 </div>
                 <p>{message.content}</p>
                 {message.role === "assistant" && message.citations.length > 0 ? (
-                  <span className="message-citation-count">
-                    {message.citations.length} 条引用
-                  </span>
+                  <>
+                    <span className="message-citation-count">
+                      {message.citations.length} 条引用
+                    </span>
+                    <div className="citation-list message-citations">
+                      {message.citations.map((citation, index) => (
+                        <article
+                          className="citation"
+                          key={`${message.id}-${citation.chunk_id}-${index}`}
+                        >
+                          <div className="citation-meta">
+                            <span>引用 {index + 1}</span>
+                            <span>
+                              {citation.page_number ? `第 ${citation.page_number} 页` : "正文"} ·{" "}
+                              {citation.score.toFixed(2)}
+                            </span>
+                          </div>
+                          <p className="citation-text">{citation.text}</p>
+                        </article>
+                      ))}
+                    </div>
+                  </>
                 ) : null}
               </article>
             ))}

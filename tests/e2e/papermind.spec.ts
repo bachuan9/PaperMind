@@ -84,6 +84,19 @@ test("uploads a markdown document and asks a grounded question", async ({ page }
   await expect(page.locator(".citation")).toContainText("Grounded answers");
 });
 
+test("shows an upload error for unsupported files", async ({ page }) => {
+  await page.goto("/");
+
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "unsupported.exe",
+    mimeType: "application/octet-stream",
+    buffer: Buffer.from("not a supported document", "utf-8")
+  });
+
+  await expect(page.locator(".alert")).toBeVisible();
+  await expect(page.locator(".alert")).toContainText(".pdf");
+});
+
 async function waitForApi() {
   const deadline = Date.now() + 20_000;
   while (Date.now() < deadline) {
