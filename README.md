@@ -57,6 +57,16 @@ papermind/
 `-- README.md
 ```
 
+## 项目文档
+
+- [系统架构](docs/architecture.md)
+- [数据结构设计](docs/database-design.md)
+- [API 文档](docs/api-reference.md)
+- [测试报告](docs/test-report.md)
+- [简历项目描述](docs/resume-project-description.md)
+- [启动和关闭命令](docs/frontend-terminal-commands.md)
+- [七阶段开发计划](docs/development-plan.md)
+
 ## 本地启动
 
 安装前端依赖：
