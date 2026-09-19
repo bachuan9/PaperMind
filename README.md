@@ -112,6 +112,10 @@ AI_DATA_DIR=./data
 AI_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 AI_MAX_UPLOAD_MB=25
 AI_PARSE_MAX_ATTEMPTS=2
+AI_QUEUE_BACKEND=inline
+AI_REDIS_URL=redis://localhost:6379/0
+AI_REDIS_QUEUE_NAME=papermind:document-processing
+AI_QUEUE_POLL_TIMEOUT_SECONDS=5
 AI_RATE_LIMIT_PER_MINUTE=120
 AI_REQUEST_LOG_ENABLED=true
 
@@ -160,6 +164,11 @@ npm run lint:api
 npm run build:web
 ```
 
+运行端到端测试：
+```bash
+npm run test:e2e
+```
+
 ## 示例文档
 
 可以用下面这个示例文件测试上传和问答：
@@ -195,3 +204,5 @@ samples/rag-notes.md
 - 模型调用日志增加 Token 用量、估算费用和缓存命中标记，便于排查调用成本。
 - 费用估算由 `LLM_INPUT_PRICE_PER_1M_TOKENS` 和 `LLM_OUTPUT_PRICE_PER_1M_TOKENS` 控制，默认值为 0。
 - 文档解析会写入 `processing_jobs` 任务记录，并按 `AI_PARSE_MAX_ATTEMPTS` 自动重试。
+- Docker Compose 模式支持 Redis 异步任务队列，`ai-worker` 会消费文档处理任务。
+阶段六补充：已增加 Playwright 端到端测试，覆盖上传文档、进入阅读页和基于文档提问。

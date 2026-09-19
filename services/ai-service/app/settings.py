@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     ai_allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     ai_max_upload_mb: int = 25
     ai_parse_max_attempts: int = 2
+    ai_queue_backend: str = "inline"
+    ai_redis_url: str = "redis://localhost:6379/0"
+    ai_redis_queue_name: str = "papermind:document-processing"
+    ai_queue_poll_timeout_seconds: int = 5
     ai_rate_limit_per_minute: int = 120
     ai_request_log_enabled: bool = True
     deepseek_api_key: str = ""

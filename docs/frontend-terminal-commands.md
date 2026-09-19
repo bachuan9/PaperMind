@@ -188,3 +188,22 @@ Invoke-WebRequest -Uri "http://127.0.0.1:8000/health" -UseBasicParsing
 Ctrl + C
 npm run dev:api
 ```
+## Docker Compose 启动完整队列版
+
+这个方式会同时启动前端、后端、Redis 和文档处理 worker：
+
+```powershell
+docker compose up --build
+```
+
+关闭：
+
+```powershell
+docker compose down
+```
+
+查看 worker 日志：
+
+```powershell
+docker compose logs -f ai-worker
+```

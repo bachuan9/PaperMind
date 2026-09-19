@@ -8,7 +8,8 @@ import type {
   DocumentNote,
   DocumentSummary,
   LlmCallLog,
-  ModelStatusResponse
+  ModelStatusResponse,
+  ProcessingJob
 } from "@/types";
 
 const API_BASE =
@@ -48,6 +49,14 @@ export async function listDocuments(): Promise<DocumentSummary[]> {
 
 export async function getDocument(id: string): Promise<DocumentDetail> {
   return parseResponse(await fetch(`${API_BASE}/documents/${id}`, { cache: "no-store" }));
+}
+
+export async function listProcessingJobs(id: string): Promise<ProcessingJob[]> {
+  return parseResponse(
+    await fetch(`${API_BASE}/documents/${encodeURIComponent(id)}/processing-jobs`, {
+      cache: "no-store"
+    })
+  );
 }
 
 export async function getDocumentInsights(id: string): Promise<DocumentInsightResponse> {

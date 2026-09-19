@@ -154,8 +154,8 @@
 - 问答结果缓存：同一文档下的独立相同问题会命中缓存，同时保留当前对话历史。
 - Token 和调用费用记录：模型日志记录 prompt/completion/total tokens、估算费用和缓存命中标记。
 - 文档解析失败自动重试：解析任务会记录到 `processing_jobs`，并按配置记录 attempts、状态和失败原因。
+- Redis 异步任务队列：Docker Compose 增加 Redis 和 `ai-worker`，API 可将文档处理任务入队。
+- Playwright 端到端测试：覆盖上传文档、阅读页和文档问答主流程。
 
 仍待推进：
-
-- Redis 异步任务队列。
-- Playwright 端到端测试。
+- 更完整的 Playwright 场景：大文件、模型超时、多轮上下文过长。

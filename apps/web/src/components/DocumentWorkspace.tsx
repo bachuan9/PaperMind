@@ -6,6 +6,7 @@ import { ArrowLeft, Download, FileText } from "lucide-react";
 import { AskPanel } from "./AskPanel";
 import { DocumentNotesPanel } from "./DocumentNotesPanel";
 import { InsightPanel } from "./InsightPanel";
+import { ProcessingJobsPanel } from "./ProcessingJobsPanel";
 import { StatusPill } from "./StatusPill";
 import { getDocumentInsights } from "@/lib/api";
 import type { DocumentDetail, DocumentInsightResponse } from "@/types";
@@ -17,6 +18,8 @@ type DocumentWorkspaceProps = {
 export function DocumentWorkspace({ document }: DocumentWorkspaceProps) {
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const isReady = document.status === "ready";
+  const isProcessing = document.status === "processing";
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -43,7 +46,7 @@ export function DocumentWorkspace({ document }: DocumentWorkspaceProps) {
         <div className="topbar-actions">
           <button
             className="secondary-action"
-            disabled={isExporting}
+            disabled={isExporting || !isReady}
             type="button"
             onClick={() => void handleExport()}
           >
@@ -61,7 +64,10 @@ export function DocumentWorkspace({ document }: DocumentWorkspaceProps) {
 
       <div className="document-layout">
         <div className="reader">
-          <InsightPanel documentId={document.id} />
+          {isReady ? <InsightPanel documentId={document.id} /> : null}
+          {!isReady ? (
+            <ProcessingJobsPanel documentId={document.id} active={isProcessing} />
+          ) : null}
           <DocumentNotesPanel documentId={document.id} />
 
           <section className="panel">
@@ -93,7 +99,7 @@ export function DocumentWorkspace({ document }: DocumentWorkspaceProps) {
           </section>
         </div>
 
-        <AskPanel documentId={document.id} />
+        {isReady ? <AskPanel documentId={document.id} /> : null}
       </div>
     </>
   );

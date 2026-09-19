@@ -11,11 +11,15 @@
     "lint:web": "npm --workspace apps/web run lint",
     "dev:api": ".venv\\Scripts\\python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --app-dir services/ai-service",
     "test:api": ".venv\\Scripts\\python -m pytest",
+    "test:e2e": "playwright test",
     "format:api": ".venv\\Scripts\\python -m ruff format services/ai-service/app services/ai-service/tests",
-    "lint:api": ".venv\\Scripts\\python -m ruff check services/ai-service/app services/ai-service/tests",
+    "lint:api": ".venv\\Scripts\\python -m ruff check services/ai-service/app services/ai-service/tests services/ai-service/worker.py",
     "dev": "npm run dev:api"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
   }
 }

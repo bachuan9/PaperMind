@@ -174,6 +174,55 @@ def test_upload_records_failed_processing_job_after_retries(
         app.dependency_overrides.clear()
 
 
+def test_upload_enqueues_document_when_redis_queue_enabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = JsonStore(tmp_path)
+    enqueued_document_ids: list[str] = []
+
+    class FakeQueue:
+        def __init__(self, **_: object):
+            pass
+
+        async def enqueue(self, document_id: str) -> None:
+            enqueued_document_ids.append(document_id)
+
+        async def close(self) -> None:
+            return None
+
+    monkeypatch.setattr("app.main.RedisTaskQueue", FakeQueue)
+    app.dependency_overrides[get_store] = lambda: store
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        ai_data_dir=tmp_path,
+        ai_queue_backend="redis",
+        deepseek_api_key="",
+    )
+
+    try:
+        client = TestClient(app)
+        upload = client.post(
+            "/documents",
+            files={
+                "file": (
+                    "queued.md",
+                    b"Queued document",
+                    "text/markdown",
+                )
+            },
+        )
+        assert upload.status_code == 200
+        document_id = upload.json()["id"]
+        jobs = client.get(f"/documents/{document_id}/processing-jobs")
+
+        assert upload.json()["status"] == "processing"
+        assert enqueued_document_ids == [document_id]
+        assert jobs.status_code == 200
+        assert jobs.json()[0]["status"] == "queued"
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_ask_endpoint_uses_cached_answer(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

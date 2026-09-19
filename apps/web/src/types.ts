@@ -11,7 +11,22 @@ export type DocumentSummary = {
   page_count: number;
   chunk_count: number;
   summary: string;
+  content_hash?: string | null;
   error?: string | null;
+};
+
+export type ProcessingJob = {
+  id: string;
+  document_id: string;
+  job_type: "parse_document";
+  status: "queued" | "processing" | "succeeded" | "failed";
+  attempts: number;
+  max_attempts: number;
+  error?: string | null;
+  created_at: string;
+  updated_at: string;
+  started_at?: string | null;
+  finished_at?: string | null;
 };
 
 export type DocumentChunk = {

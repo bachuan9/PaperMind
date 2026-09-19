@@ -12,9 +12,11 @@ export function Dashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (showLoading = true) => {
     setError(null);
-    setIsLoading(true);
+    if (showLoading) {
+      setIsLoading(true);
+    }
     try {
       setDocuments(await listDocuments());
     } catch (err) {
@@ -27,6 +29,16 @@ export function Dashboard() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (!documents.some((document) => document.status === "processing")) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void refresh(false);
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [documents, refresh]);
 
   return (
     <div className="grid-dashboard">

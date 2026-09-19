@@ -1,13 +1,44 @@
 services:
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   ai-service:
     build:
       context: ./services/ai-service
     env_file:
       - .env
+    environment:
+      AI_QUEUE_BACKEND: redis
+      AI_REDIS_URL: redis://redis:6379/0
+      AI_REDIS_QUEUE_NAME: papermind:document-processing
     ports:
       - "8000:8000"
     volumes:
       - ./services/ai-service/data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  ai-worker:
+    build:
+      context: ./services/ai-service
+    env_file:
+      - .env
+    environment:
+      AI_QUEUE_BACKEND: redis
+      AI_REDIS_URL: redis://redis:6379/0
+      AI_REDIS_QUEUE_NAME: papermind:document-processing
+    command: ["python", "worker.py"]
+    volumes:
+      - ./services/ai-service/data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
 
   web:
     build:

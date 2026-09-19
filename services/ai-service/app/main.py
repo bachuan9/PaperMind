@@ -44,6 +44,7 @@ from .parser import (
     parse_document,
     validate_extension,
 )
+from .queue import QueueUnavailable, RedisTaskQueue
 from .retrieval import build_extractive_answer, retrieve
 from .runtime import get_model_status
 from .settings import Settings, get_settings
@@ -117,6 +118,58 @@ async def create_document(
     now = now_utc()
     title = Path(filename).stem or "Untitled"
     upload_path = store.save_upload(document_id, filename, content)
+    if settings.ai_queue_backend == "redis":
+        max_parse_attempts = max(settings.ai_parse_max_attempts, 1)
+        job = ProcessingJob(
+            id=str(uuid4()),
+            document_id=document_id,
+            status="queued",
+            attempts=0,
+            max_attempts=max_parse_attempts,
+            created_at=now,
+            updated_at=now,
+        )
+        document = DocumentSummary(
+            id=document_id,
+            title=title,
+            filename=filename,
+            status="processing",
+            created_at=now,
+            updated_at=now,
+            size_bytes=len(content),
+            content_hash=content_hash,
+        )
+        store.save_document(document, [], {})
+        store.save_processing_job(job)
+        queue = RedisTaskQueue(
+            redis_url=settings.ai_redis_url,
+            queue_name=settings.ai_redis_queue_name,
+        )
+        try:
+            await queue.enqueue(document_id)
+        except QueueUnavailable as error:
+            failed_at = now_utc()
+            failed_document = document.model_copy(
+                update={
+                    "status": "failed",
+                    "updated_at": failed_at,
+                    "error": str(error),
+                }
+            )
+            failed_job = job.model_copy(
+                update={
+                    "status": "failed",
+                    "updated_at": failed_at,
+                    "finished_at": failed_at,
+                    "error": str(error),
+                }
+            )
+            store.save_processing_job(failed_job)
+            return store.save_document(failed_document, [], {})
+        finally:
+            await queue.close()
+        return document
+
     max_parse_attempts = max(settings.ai_parse_max_attempts, 1)
     job = ProcessingJob(
         id=str(uuid4()),
